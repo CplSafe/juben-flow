@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS bpm_external_application (
  UNIQUE KEY uk_source_application(source,application_id), KEY idx_application_student(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- Repair only this module's department if an earlier client imported UTF-8 as latin1.
-UPDATE system_dept SET name='校园学生' WHERE deleted=0 AND name=CONVERT(CONVERT(CAST(_utf8mb4'校园学生' AS BINARY) USING latin1) USING utf8mb4);
+UPDATE system_dept SET name='校园学生' WHERE deleted=0 AND CAST(name AS BINARY)=CAST(CONVERT(CONVERT(CAST(_utf8mb4'校园学生' AS BINARY) USING latin1) USING utf8mb4) AS BINARY);
 INSERT INTO system_dept(name,parent_id,sort,status,tenant_id)
  SELECT '校园学生',0,100,0,0 WHERE NOT EXISTS(SELECT 1 FROM system_dept WHERE name='校园学生' AND deleted=0);
 -- BPM root IDs differ between official SQL releases; resolve by stable root route.

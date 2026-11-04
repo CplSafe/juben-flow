@@ -85,7 +85,7 @@ const coreRoutes: RouteRecordRaw[] = [
       {
         name: 'Register',
         path: 'register',
-        component: () => import('#/views/_core/authentication/register.vue'),
+        redirect: '/auth/login',
         meta: {
           title: $t('page.auth.register'),
         },

@@ -45,3 +45,7 @@
 - 发布清单及验收结果：/data/juben-flow/releases/student-c1a41f98/manifest.json、verification.json、final-check.json（仅在服务器，不提交数据库或密钥）。
 - 回退：恢复备份中的app.jar和frontend、Java compose配置、业务.env；将zhenzhihui-backend:before-student-c7eb603重新标记为dev，只重建对应backend/api服务。新增表可保留；常规回退不要覆盖数据库或清除已有业务数据。
 - DEV生产服务器本次未连接、未部署。后续经测试验收并收到生产发布指令后，再独立部署到 flow.zhongdahengrui.com，使用独立数据库和密钥。
+
+## 后台自主注册关闭
+
+执行 backend/sql/student-bridge/disable-self-registration.sql，使用官方 system.user.register-enabled=false 开关在服务端拒绝自主注册。登录页隐藏创建账号，直接打开/auth/register跳回登录页。管理员新增人员和签名学生同步继续保留；不关闭学生业务系统的登录或申请入口。

@@ -175,6 +175,7 @@ const formSchema = computed((): VbenFormSchema[] => {
       ref="loginRef"
       :form-schema="formSchema"
       :loading="authStore.loginLoading"
+      :show-register="false"
       @submit="handleLogin"
       @third-login="handleThirdLogin"
     />

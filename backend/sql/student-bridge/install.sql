@@ -20,15 +20,20 @@ CREATE TABLE IF NOT EXISTS bpm_external_application (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT INTO system_dept(name,parent_id,sort,status,tenant_id)
  SELECT '校园学生',0,100,0,0 WHERE NOT EXISTS(SELECT 1 FROM system_dept WHERE name='校园学生' AND deleted=0);
+-- BPM root IDs differ between official SQL releases; resolve by stable root route.
+SET @student_bpm_root = (SELECT id FROM system_menu WHERE path='/bpm' AND parent_id=0 AND deleted=0 ORDER BY id LIMIT 1);
 INSERT INTO system_menu(name,permission,type,sort,parent_id,path,component,component_name)
- SELECT '学生管理','bpm:student:query',2,80,148,'students','bpm/student/index','BpmStudents'
- WHERE NOT EXISTS(SELECT 1 FROM system_menu WHERE permission='bpm:student:query' AND deleted=0);
+ SELECT '学生管理','bpm:student:query',2,80,@student_bpm_root,'students','bpm/student/index','BpmStudents'
+ WHERE @student_bpm_root IS NOT NULL AND NOT EXISTS(SELECT 1 FROM system_menu WHERE permission='bpm:student:query' AND deleted=0);
 INSERT INTO system_menu(name,permission,type,sort,parent_id,path)
  SELECT '学生状态管理','bpm:student:update',3,1,id,'' FROM system_menu m WHERE m.permission='bpm:student:query' AND m.deleted=0
  AND NOT EXISTS(SELECT 1 FROM (SELECT permission,deleted FROM system_menu) x WHERE x.permission='bpm:student:update' AND x.deleted=0);
 INSERT INTO system_menu(name,permission,type,sort,parent_id,path,component,component_name)
- SELECT '创意申请','bpm:student-application:query',2,81,148,'student-applications','bpm/studentApplication/index','BpmStudentApplications'
- WHERE NOT EXISTS(SELECT 1 FROM system_menu WHERE permission='bpm:student-application:query' AND deleted=0);
+ SELECT '创意申请','bpm:student-application:query',2,81,@student_bpm_root,'student-applications','bpm/studentApplication/index','BpmStudentApplications'
+ WHERE @student_bpm_root IS NOT NULL AND NOT EXISTS(SELECT 1 FROM system_menu WHERE permission='bpm:student-application:query' AND deleted=0);
+-- Also repair a prior installation that used a root ID from another SQL release.
+UPDATE system_menu SET parent_id=@student_bpm_root WHERE deleted=0 AND permission IN ('bpm:student:query','bpm:student-application:query') AND @student_bpm_root IS NOT NULL;
+SELECT @student_bpm_root AS workflow_menu_root_id;
 SELECT id AS student_dept_id FROM system_dept WHERE name='校园学生' AND deleted=0;
 -- Set yudao.student-bridge.student-dept-id to the returned ID, secret to a random shared secret >=32 bytes.
 -- In SIMPLE model start permissions use department mode, add the student department AND existing staff departments,

@@ -1,0 +1,13 @@
+.DS_Store
+**/node_modules/
+**/target/
+**/dist/
+**/dist.zip
+**/.turbo/
+**/__pycache__/
+**/*.log
+**/local-secrets.json
+**/data.sqlite3*
+**/backups/
+.env.local
+.env.*.local

@@ -131,6 +131,14 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
+    public Long createExternalStudent(UserSaveReqVO createReqVO) {
+        // Intentional internal call: a signed integration has no human operator for
+        // @LogRecord. The bridge records its source and student mapping transactionally.
+        createReqVO.setPostIds(null);
+        return createUser(createReqVO);
+    }
+
+    @Override
     public AdminUserDO registerUser(AuthRegisterReqVO registerReqVO) {
         // 1.1 校验是否开启注册
         if (ObjUtil.notEqual(configApi.getConfigValueByKey(USER_REGISTER_ENABLED_KEY), "true")) {

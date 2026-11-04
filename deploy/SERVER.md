@@ -1,6 +1,6 @@
 # flow-dev 部署记录
 
-2026-11-04 已部署至 zhenzhihui-pro（124.174.95.225）。
+2026-11-04 已部署至测试服务器 zhenzhihui-pro（124.174.95.225）。PRO 是测试环境；DEV 才是生产环境，详见 [ENVIRONMENTS.md](ENVIRONMENTS.md)。
 
 - 后台：https://flow-dev.zhongdahengrui.com
 - 应用目录：/data/juben-flow

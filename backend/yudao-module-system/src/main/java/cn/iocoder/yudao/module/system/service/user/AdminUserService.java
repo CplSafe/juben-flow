@@ -35,6 +35,14 @@ public interface AdminUserService {
     Long createUser(@Valid UserSaveReqVO createReqVO);
 
     /**
+     * Trusted external student provisioning. Reuses normal account validation and password
+     * encoding, without a human-admin operation log. Caller must retain the source mapping.
+     * No roles or posts are granted automatically.
+     */
+    Long createExternalStudent(@Valid UserSaveReqVO createReqVO);
+
+
+    /**
      * 注册用户
      *
      * @param registerReqVO 用户信息

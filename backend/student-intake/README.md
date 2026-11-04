@@ -21,3 +21,7 @@ GET /api/applications 及 /api/application/{id} 需要超级管理员 Bearer tok
 已真实验证身份交换、授权码重放拒绝、申请提交启动流程、重复提交幂等、管理员记录与流程详情。前一轮已验证该 SIMPLE 流程或签和全部节点及最终抄送。
 
 当前为本机试运行接入服务，尚未公网部署。上线前需 HTTPS 反向代理、来源方独立凭证及轮换、持久化数据库备份、限流、监控、个人信息告知与保留期限。此版后台记录页独立运行，尚未嵌入 Vben 菜单；列表最多显示最近200条。审批详情暂以结构化数据展示。
+
+## 已废弃（2026-11-04）
+
+改由 zhenzhihui Go 后端 /api/v1/student-applications 接收登录用户申请并调用Java工作流。本Python服务已停用，不再作为部署方案；历史数据保留。新前端请使用Go项目 docs/features/student-applications-api.md。

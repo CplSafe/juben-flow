@@ -33,6 +33,7 @@ async function load() {
 async function page(delta: number) { offset.value = Math.max(0, offset.value + delta); await load(); }
 function selectDetail(id: number) { detail.value = rows.value.find((item) => item.id === id); }
 function openProcess(row: Row) {
+ detail.value = undefined;
  router.push({ name: 'BpmProcessInstanceDetail', query: { id: row.process_id } });
 }
 onMounted(load);

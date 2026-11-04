@@ -28,6 +28,7 @@ public class StudentBridgeService {
     @Resource private BpmProcessInstanceService processes;
     @Resource private StringRedisTemplate redis;
     @Resource private ObjectMapper mapper;
+    @Resource private StudentStageService stages;
     @Value("${yudao.student-bridge.secret:${ZZH_WORKFLOW_BRIDGE_SECRET:}}") private String secret;
     @Value("${yudao.student-bridge.student-dept-id:${ZZH_WORKFLOW_STUDENT_DEPT_ID:0}}") private long deptId;
     @Value("${yudao.student-bridge.process-key:screenwriting_production}") private String processKey;
@@ -38,7 +39,7 @@ public class StudentBridgeService {
 
     public void authenticate(String path, String body, String timestamp, String nonce, String signature) {
         try {
-            if (secret.length() < 32 || body.getBytes(StandardCharsets.UTF_8).length > 65536
+            if (secret.length() < 32 || body.getBytes(StandardCharsets.UTF_8).length > 262144
                     || nonce == null || !nonce.matches("[a-f0-9]{32}") || signature == null
                     || !signature.matches("[a-f0-9]{64}") || timestamp == null
                     || !timestamp.matches("[0-9]{10}")) throw new IllegalArgumentException();
@@ -131,15 +132,7 @@ public class StudentBridgeService {
     }
 
     public Map<String,Object> progress(Request r) {
-        var rows = jdbc.queryForList("SELECT a.process_id FROM bpm_external_application a JOIN bpm_external_student s ON a.source=s.source AND a.user_id=s.user_id WHERE a.source=? AND a.application_id=? AND s.external_user_id=?",SOURCE,r.applicationId(),r.externalUserId());
-        if (rows.isEmpty() || rows.get(0).get("process_id") == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        var instance = processes.getHistoricProcessInstance((String)rows.get(0).get("process_id"));
-        if (instance == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        Map<String,Object> result = new HashMap<>();
-        result.put("status",instance.getProcessVariables().get("PROCESS_STATUS"));
-        result.put("name",instance.getName());
-        result.put("end_time",instance.getEndTime() == null ? null : instance.getEndTime().getTime());
-        return result;
+        return stages.progress(r.externalUserId(), r.applicationId());
     }
     public List<Map<String,Object>> students(int offset) {
         return jdbc.queryForList("SELECT s.*,u.status FROM bpm_external_student s JOIN system_users u ON s.user_id=u.id WHERE u.deleted=0 ORDER BY s.id DESC LIMIT 50 OFFSET ?", Math.max(0,offset));

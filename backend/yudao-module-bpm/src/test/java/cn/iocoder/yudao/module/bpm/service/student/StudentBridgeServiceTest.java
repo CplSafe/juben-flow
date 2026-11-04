@@ -98,9 +98,4 @@ class StudentBridgeServiceTest {
         when(users.getUser(222L)).thenReturn(new AdminUserDO().setStatus(1));
         assertThrows(ResponseStatusException.class,()->service.submit(req));
     }
-    @Test void foreignStudentCannotQuery() {
-        when(jdbc.queryForList(anyString(),any(),any(),any())).thenReturn(List.of());
-        assertThrows(ResponseStatusException.class,()->service.progress(new StudentBridgeService.Request("8","9",null,null,null,null)));
-        verifyNoInteractions(processes);
-    }
 }

@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.bpm.controller.admin.student;
 
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.module.bpm.service.student.StudentBridgeService;
+import cn.iocoder.yudao.module.bpm.service.student.StudentStageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -18,6 +19,7 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 @Tag(name="管理后台 - 学生与创意申请")
 public class StudentBridgeController {
     @Resource private StudentBridgeService service;
+    @Resource private StudentStageService stages;
     @ModelAttribute
     public void noStore(HttpServletResponse response) { response.setHeader("Cache-Control", "no-store"); }
 
@@ -45,6 +47,17 @@ public class StudentBridgeController {
             @RequestHeader("X-Bridge-Signature") String signature) {
         return success(service.progress(request("/bpm/student-bridge/progress",body,timestamp,nonce,signature,false)));
     }
+    @PostMapping("/stage-submit") @PermitAll
+    @Operation(summary="受信后端提交学生当前阶段，原子保存版本并办理本人任务")
+    public CommonResult<Map<String,Object>> stageSubmit(@RequestBody String body,
+            @RequestHeader("X-Bridge-Timestamp") String timestamp,@RequestHeader("X-Bridge-Nonce") String nonce,
+            @RequestHeader("X-Bridge-Signature") String signature) {
+        service.authenticate("/bpm/student-bridge/stage-submit",body,timestamp,nonce,signature);
+        return success(stages.submit(stages.parse(body)));
+    }
+    @GetMapping("/application-detail") @PreAuthorize("@ss.hasPermission('bpm:student-application:query')")
+    @Operation(summary="申请、历次提交版本及审批记录")
+    public CommonResult<Map<String,Object>> detail(@RequestParam long id) { return success(stages.adminDetail(id)); }
     @GetMapping("/students") @PreAuthorize("@ss.hasPermission('bpm:student:query')")
     @Operation(summary="学生列表（每页50条）")
     public CommonResult<List<Map<String,Object>>> students(@RequestParam(defaultValue="0") int offset) { return success(service.students(offset)); }

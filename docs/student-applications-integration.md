@@ -147,3 +147,7 @@ logicalPath为 `/bpm/student-bridge/submit` 或 `/bpm/student-bridge/progress`�
 - Vben：学生列表/停用与创意申请/审批详情入口连接真实管理接口，无模拟数据。
 
 审批短信沿用官方通知逻辑。当前本地审批人员未配置手机号，短信通知会报手机号缺失；流程和待办已创建。此接入不启用或配置付费短信。
+
+## 分阶段创作
+
+新版详情返回学生当前待办和不可变提交版本，新增阶段提交接口。见[分阶段前端对接](student-application-stages.md)。

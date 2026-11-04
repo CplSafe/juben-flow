@@ -49,3 +49,13 @@
 ## 后台自主注册关闭
 
 执行 backend/sql/student-bridge/disable-self-registration.sql，使用官方 system.user.register-enabled=false 开关在服务端拒绝自主注册。登录页隐藏创建账号，直接打开/auth/register跳回登录页。管理员新增人员和签名学生同步继续保留；不关闭学生业务系统的登录或申请入口。
+
+## 2026-11-04 Student script stages (PRO / test)
+
+- Runtime source: workflow 6774077c; business API 0a8f6a5. Both main branches are pushed and pulled on PRO. Artifact hashes: /data/juben-flow/releases/stages-6774077c/manifest.json.
+- Additive table bpm_external_submission archives immutable stage submissions with unique application/version, application/request key and application/task constraints. Creative stays v1, first script v2, refined script v3.
+- Official SIMPLE publication inserts starter-owned StudentDraft and StudentRevision tasks between the original three reviews. Sam/Yuge remain OR-sign; later staff remain unchanged. Existing instances keep their original definition.
+- Business Swagger and frontend guide: docs/features/student-application-stages.md in the business repository. The original-system frontend must consume current_task and the stage submission API; this release supplies APIs and workflow administration, not a replacement student frontend.
+- Full pre-release database/runtime backup: /data/juben-flow/backup/student-release-20261104-165813. Model/form snapshots: staged-model within that directory.
+- Rollback API by retagging zhenzhihui-backend:before-stages-0a8f6a5 and recreating only api. Restore backed-up Jar/frontend and recreate only backend if needed. Keep stage-capable services for instances already started on the new definition; do not drop definitions or restore entire databases over live records.
+- DEV production was not contacted. Nginx, other sites, worker and identity service are outside the replacement scope.

@@ -20,8 +20,13 @@ export const overridesPreferences = defineOverridesPreferences({
   app: {
     /** 后端路由模式 */
     accessMode: 'backend',
+    defaultHomePath: '/bpm/task/create',
     name: import.meta.env.VITE_APP_TITLE,
     enableRefreshToken: true,
+  },
+  logo: {
+    source: '/branding/logo.png',
+    sourceDark: '/branding/logo.png',
   },
   footer: {
     /** 默认关闭 footer 页脚，因为有一定遮挡 */

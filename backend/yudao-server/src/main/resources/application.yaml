@@ -210,6 +210,8 @@ spring:
           enabled: false # TODO @芋艿：有 bug https://github.com/spring-projects/spring-ai/issues/4917 需要官方修复
 
 yudao:
+  captcha:
+    enable: false
   ai:
     gemini: # 谷歌 Gemini
       enable: true
@@ -276,6 +278,8 @@ yudao:
 --- #################### 芋道相关配置 ####################
 
 yudao:
+  captcha:
+    enable: false
   info:
     version: 1.0.0
     base-package: cn.iocoder.yudao

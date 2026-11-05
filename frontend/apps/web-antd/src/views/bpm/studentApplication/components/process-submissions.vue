@@ -7,7 +7,7 @@ const props = defineProps<{ processId: string }>();
 interface Detail { application:{id:number;creator_json?:string};workflow:{flow_version?:number;card_grade?:string;card_grades?:Array<{version:number;grade:string;reviewer_name:string;reviewed_at:number}>;production_assignment?:{producer_name?:string;director_name?:string};versions:Array<{version:number;stage:string;content:string;data?:Record<string,unknown>}>;withdrawals?:Array<{task_id:string;stage:string;reason:string;version:number;withdrawn_at:number}>} }
 const detail=ref<Detail>();const failed=ref(false);const loading=ref(false);let generation=0;
 const names:Record<string,string>={creative:'创意',card:'一卡',script:'剧本',final:'完善剧本',draft:'一卡（旧流程）',revision:'完善剧本（旧流程）'};
-function stageName(stage:string){return stage==='script'&&detail.value?.workflow.flow_version===5?'完善一卡剧本':names[stage]||stage;}
+function stageName(stage:string){return stage==='script'&&detail.value?.workflow.flow_version===5?'完善剧本':names[stage]||stage;}
 async function load(){const current=++generation;detail.value=undefined;loading.value=true;failed.value=false;try{const value=await requestClient.get<Detail>('/bpm/student-bridge/process-detail',{params:{processId:props.processId}});if(current===generation)detail.value=value;}catch{if(current===generation)failed.value=true;}finally{if(current===generation)loading.value=false;}}
 watch(()=>props.processId,load,{immediate:true});
 </script>

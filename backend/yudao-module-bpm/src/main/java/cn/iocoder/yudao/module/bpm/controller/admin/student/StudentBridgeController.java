@@ -19,6 +19,7 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 @Tag(name="管理后台 - 学生与创意申请")
 public class StudentBridgeController {
     @Resource private StudentBridgeService service;
+    @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentPreviewService previews;
     @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentProductionService production;
     @Resource private StudentStageService stages;
     @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentDocumentService documents;
@@ -81,6 +82,9 @@ public class StudentBridgeController {
         service.authenticate("/bpm/student-bridge/summaries",body,timestamp,nonce,signature);
         return success(stages.summaries(stages.parseSummaries(body)));
     }
+    @GetMapping("/file-preview") @PreAuthorize("isAuthenticated()")
+    @Operation(summary="预览申请历史版本附件，复用下载权限；Office转PDF，PDF/文本直接阅读")
+    public void preview(@RequestParam long id,@RequestParam long fileId,HttpServletResponse response) {previews.preview(id,fileId,response);}
     @GetMapping("/file-download") @PreAuthorize("isAuthenticated()")
     @Operation(summary="审批人员下载当前申请历史版本中的附件；校验版本归属后代理流式下载")
     public void file(@RequestParam long id,@RequestParam long fileId,HttpServletResponse response) {documents.download(id,fileId,response);}

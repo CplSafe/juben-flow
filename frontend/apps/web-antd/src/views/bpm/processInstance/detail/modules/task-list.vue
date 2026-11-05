@@ -17,6 +17,7 @@ import { getTaskListByProcessInstanceId } from '#/api/bpm/task';
 import { setConfAndFields2 } from '#/components/form-create';
 
 import TaskEvidence from './task-evidence.vue';
+import { studentTaskName } from '#/utils/student-script';
 
 defineOptions({
   name: 'BpmProcessInstanceTaskList',
@@ -39,12 +40,13 @@ function useGridColumns(): VxeTableGridOptions['columns'] {
   return [
     {
       field: 'name',
+      formatter: ({cellValue}) => studentTaskName(cellValue),
       title: '审批节点',
       minWidth: 150,
     },
     {
       field: 'approver',
-      title: '审批人',
+      title: '操作人',
       slots: {
         default: ({ row }: { row: BpmTaskApi.Task }) => {
           return row.assigneeUser?.nickname || row.ownerUser?.nickname;

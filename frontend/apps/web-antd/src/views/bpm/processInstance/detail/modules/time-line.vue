@@ -1,5 +1,6 @@
 <!-- 审批详情的右侧：审批流 -->
 <script lang="ts" setup>
+import {studentTaskName} from '#/utils/student-script';
 import type { BpmProcessInstanceApi } from '#/api/bpm/processInstance';
 
 import { ref } from 'vue';
@@ -294,7 +295,7 @@ defineExpose({ setCustomApproveUsers, batchSetCustomApproveUsers });
           <!-- 第一行：节点名称、时间 -->
           <div class="flex w-full">
             <div class="font-bold">
-              {{ activity.name }}
+              {{ studentTaskName(activity.name) }}
               <span v-if="activity.status === BpmTaskStatusEnum.SKIP">
                 【跳过】
               </span>

@@ -170,7 +170,7 @@ public class StudentStageService {
                 String stage=studentStage(task.getTaskDefinitionKey(),four);
                 if (stage!=null && writable(task,userId,processId)) {
                     result.put("stage",stage);
-                    Map<String,Object> edit=new HashMap<>(Map.of("task_id",task.getId(),"stage",stage,"name",task.getName(),"content","creative".equals(stage)?snapshots.get(snapshots.size()-1).get("content"):snapshots.get(snapshots.size()-1).get("stage").equals("creative")?"":snapshots.get(snapshots.size()-1).get("content")));
+                    Map<String,Object> edit=new HashMap<>(Map.of("task_id",task.getId(),"stage",stage,"name","学生完善一卡剧本".equals(task.getName())?"学生完善剧本":task.getName(),"content","creative".equals(stage)?snapshots.get(snapshots.size()-1).get("content"):snapshots.get(snapshots.size()-1).get("stage").equals("creative")?"":snapshots.get(snapshots.size()-1).get("content")));
                     edit.put("data",prefill(stage,snapshots));result.put("current_task",edit);
                     break;
                 }

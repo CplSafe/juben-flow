@@ -151,3 +151,13 @@ logicalPath为 `/bpm/student-bridge/submit` 或 `/bpm/student-bridge/progress`�
 ## 分阶段创作
 
 新版详情返回学生当前待办和不可变提交版本，新增阶段提交接口。见[分阶段前端对接](student-application-stages.md)。
+
+
+## 后台附件阅读（2026-11-05）
+
+创意、一卡、完善剧本和每次历史提交的附件均可在后台点“预览”。支持 PDF、DOC/DOCX、PPT/PPTX、TXT、Markdown；Office 在私有转换容器中转换为 PDF，保留标题、表格和分页。PDF 可翻页与缩放；Markdown 按标题、列表、引用和表格排版。前端同学无需修改学生提交接口。
+
+- 后台登录态 GET `/admin-api/bpm/student-bridge/file-preview?id=<后台申请记录ID>&fileId=<附件ID>`，复用下载权限与历史版本归属检查。这里 id 是后台申请记录 ID，不是原业务 application_id。不得在公网匿名调用或把服务密钥交给浏览器。
+- 原文件下载接口不变。Office 在线预览限 30 MiB，PDF 50 MiB，TXT/MD 5 MiB；超限可下载原文件。转换繁忙返回 429，失败可重试或下载；不持久化转换副本，不修改提交快照。
+- 转换器只在内部 Docker 网络可达，无公网端口，禁止文档访问外部资源。预览 Markdown 不执行 HTML、不自动加载远程图片。
+- 学生操作节点统一显示“学生完善剧本”，流转记录中的人员列为“操作人”。旧实例只映射显示名称，原始流程历史不被重写。

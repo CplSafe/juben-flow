@@ -35,7 +35,7 @@ const columns = [
  { title: '申请编号', dataIndex: 'application_id', width: 140 },
  { title: '操作', key: 'action', width: 160 },
 ];
-function stageLabel(stage:string){return stage==='script'&&workflow.value?.flow_version===5?'完善一卡剧本':stageNames[stage]||stage;}
+function stageLabel(stage:string){return stage==='script'&&workflow.value?.flow_version===5?'完善剧本':stageNames[stage]||stage;}
 async function load() {
  loading.value = true; failure.value = false;
  try { rows.value = await requestClient.get<Row[]>('/bpm/student-bridge/applications', { params: { offset: offset.value } }); }

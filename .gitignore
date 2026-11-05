@@ -11,3 +11,6 @@
 **/backups/
 .env.local
 .env.*.local
+
+# Generated from the pinned pdfjs-dist dependency at build time.
+/frontend/apps/web-antd/public/pdfjs/

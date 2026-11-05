@@ -43,18 +43,22 @@ public class StudentDocumentService {
     @Value("${yudao.student-bridge.business-url:${ZZH_STUDENT_BUSINESS_URL:http://host.docker.internal:9000}}") private String businessUrl;
     private final HttpClient client=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build();
 
-    boolean containsFile(Object raw,long fileId) {
-        if(raw==null)return false;
-        try {for(var file:mapper.readTree(raw.toString()).path("attachments")) if(file.path("file_id").canConvertToLong() && file.path("file_id").asLong()==fileId)return true;return false;}
+    private com.fasterxml.jackson.databind.JsonNode findFile(Object raw,long fileId) {
+        if(raw==null)return null;
+        try {for(var file:mapper.readTree(raw.toString()).path("attachments")) if(file.path("file_id").isIntegralNumber() && file.path("file_id").canConvertToLong() && file.path("file_id").asLong()==fileId)return file;return null;}
         catch(Exception e){throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Attachment snapshot unavailable");}
     }
-    public void download(long applicationRecordId,long fileId,HttpServletResponse response) {
+    boolean containsFile(Object raw,long fileId) {return findFile(raw,fileId)!=null;}
+    record Source(String name,long size,String disposition,InputStream body) implements AutoCloseable {
+        public void close() throws java.io.IOException {body.close();}
+    }
+    Source openSource(long applicationRecordId,long fileId) {
         authorize(applicationRecordId);
         var rows=jdbc.queryForList("SELECT id,application_id,data_json FROM bpm_external_application WHERE id=?",applicationRecordId);
         if(rows.isEmpty() || fileId<=0)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        var app=rows.get(0);boolean found=containsFile(app.get("data_json"),fileId);
-        if(!found) for(var row:jdbc.queryForList("SELECT data_json FROM bpm_external_submission WHERE application_ref=? AND data_json IS NOT NULL",applicationRecordId)) if(containsFile(row.get("data_json"),fileId)){found=true;break;}
-        if(!found)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        var app=rows.get(0);var metadata=findFile(app.get("data_json"),fileId);
+        if(metadata==null)for(var row:jdbc.queryForList("SELECT data_json FROM bpm_external_submission WHERE application_ref=? AND data_json IS NOT NULL",applicationRecordId)){metadata=findFile(row.get("data_json"),fileId);if(metadata!=null)break;}
+        if(metadata==null)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         if(secret.length()<32)throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Attachment integration not configured");
         try {
             URI base=URI.create(businessUrl);
@@ -68,16 +72,17 @@ public class StudentDocumentService {
             var request=HttpRequest.newBuilder(URI.create(businessUrl.replaceAll("/$","")+path)).timeout(Duration.ofMinutes(5))
                 .header("Content-Type","application/json").header("X-Bridge-Timestamp",timestamp).header("X-Bridge-Nonce",nonce).header("X-Bridge-Signature",signature).POST(HttpRequest.BodyPublishers.ofByteArray(body)).build();
             var upstream=client.send(request,HttpResponse.BodyHandlers.ofInputStream());
-            try(InputStream in=upstream.body()) {
-                if(upstream.statusCode()!=200)throw new ResponseStatusException(upstream.statusCode()==404?HttpStatus.NOT_FOUND:HttpStatus.SERVICE_UNAVAILABLE,"Attachment temporarily unavailable");
-                long size=upstream.headers().firstValueAsLong("Content-Length").orElse(-1);
-                if(size<1 || size>(500L<<20))throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Invalid attachment response");
-                response.setHeader("Cache-Control","no-store");response.setHeader("X-Content-Type-Options","nosniff");response.setContentType("application/octet-stream");response.setContentLengthLong(size);
-                response.setHeader("Content-Disposition",upstream.headers().firstValue("Content-Disposition").orElse("attachment"));
-                byte[] buffer=new byte[64*1024];long remaining=size;
-                while(remaining>0) {int n=in.read(buffer,0,(int)Math.min(buffer.length,remaining));if(n<0)throw new java.io.IOException("Incomplete attachment");response.getOutputStream().write(buffer,0,n);remaining-=n;}
-            }
+            long size=upstream.headers().firstValueAsLong("Content-Length").orElse(-1);
+            if(upstream.statusCode()!=200 || size<1 || size>(500L<<20)){upstream.body().close();throw new ResponseStatusException(upstream.statusCode()==404?HttpStatus.NOT_FOUND:HttpStatus.SERVICE_UNAVAILABLE,"Attachment temporarily unavailable");}
+            return new Source(metadata.path("file_name").asText("document"),size,upstream.headers().firstValue("Content-Disposition").orElse("attachment"),upstream.body());
         }catch(ResponseStatusException e){throw e;}
         catch(Exception e){if(e instanceof InterruptedException)Thread.currentThread().interrupt();throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Attachment temporarily unavailable");}
+    }
+    public void download(long applicationRecordId,long fileId,HttpServletResponse response) {
+        try(Source source=openSource(applicationRecordId,fileId)) {
+            response.setHeader("Cache-Control","no-store");response.setHeader("X-Content-Type-Options","nosniff");response.setContentType("application/octet-stream");response.setContentLengthLong(source.size());response.setHeader("Content-Disposition",source.disposition());
+            byte[] buffer=new byte[64*1024];long remaining=source.size();while(remaining>0){int n=source.body().read(buffer,0,(int)Math.min(buffer.length,remaining));if(n<0)throw new java.io.IOException("Incomplete attachment");response.getOutputStream().write(buffer,0,n);remaining-=n;}
+        }catch(ResponseStatusException e){throw e;}
+        catch(java.io.IOException e){throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Attachment temporarily unavailable");}
     }
 }

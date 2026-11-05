@@ -9,5 +9,8 @@ class CardReviewModelTest(unittest.TestCase):
   nodes=m.four.nodes(updated);self.assertEqual([n['id'] for n in nodes],['StartUserNode','CreativeReview','StudentDraft','GradedCardReview','StudentScript','CardRefinementReview','EndEvent'])
   for node in nodes:
    if node['id'] in ('GradedCardReview','CardRefinementReview'):self.assertEqual(node['approveMethod'],3);self.assertEqual(node['candidateParam'],'143,144')
+  script=next(n for n in nodes if n["id"]=="StudentScript");self.assertEqual(script["name"],"学生完善剧本")
+  old=copy.deepcopy(updated);next(n for n in m.four.nodes(old) if n["id"]=="StudentScript")["name"]="学生完善一卡剧本"
+  renamed,changed=m.transform(old);self.assertTrue(changed);self.assertEqual(next(n for n in m.four.nodes(renamed) if n["id"]=="StudentScript")["name"],"学生完善剧本");self.assertFalse(m.transform(renamed)[1])
   self.assertFalse(m.transform(updated)[1]);self.assertEqual(nodes[-2]['rejectHandler']['returnNodeId'],'StudentScript')
 if __name__=='__main__':unittest.main()

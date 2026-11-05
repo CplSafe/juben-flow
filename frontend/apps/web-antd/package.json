@@ -16,7 +16,7 @@
   },
   "type": "module",
   "scripts": {
-    "build": "pnpm vite build --mode production",
+    "build": "node scripts/prepare-pdf.mjs && pnpm vite build --mode production",
     "build:analyze": "pnpm vite build --mode analyze",
     "dev": "pnpm vite --mode development",
     "preview": "vite preview",
@@ -56,9 +56,12 @@
     "dayjs": "catalog:",
     "dhtmlx-gantt": "catalog:",
     "diagram-js": "catalog:",
+    "dompurify": "^3.4.17",
     "fast-xml-parser": "catalog:",
     "highlight.js": "catalog:",
     "livekit-client": "catalog:",
+    "markdown-it": "catalog:",
+    "pdfjs-dist": "^6.5.438",
     "pinia": "catalog:",
     "sortablejs": "catalog:",
     "steady-xml": "catalog:",
@@ -73,6 +76,7 @@
     "vuedraggable": "catalog:"
   },
   "devDependencies": {
+    "@types/markdown-it": "catalog:",
     "@types/sortablejs": "catalog:"
   }
 }

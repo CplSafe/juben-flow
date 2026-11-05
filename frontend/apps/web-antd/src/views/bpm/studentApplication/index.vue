@@ -4,17 +4,18 @@ import { useRouter } from 'vue-router';
 import { Page } from '@vben/common-ui';
 import { Alert, Button, Collapse, CollapsePanel, Drawer, Space, Table, Tag } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import ScriptFields from './components/script-fields.vue';
 
 interface Row {
  id: number; user_id: number; external_user_id?: string; name: string; phone: string;
- school: string; status?: number; creative?: string; process_id?: string; application_id?: string;
+ school: string; creator_json?: string; status?: number; creative?: string; process_id?: string; application_id?: string;
 }
-interface Version { version: number; stage: string; content: string; task_id: string; submitted_at: number }
+interface Version { data?: Record<string,unknown>; version: number; stage: string; content: string; task_id: string; submitted_at: number }
 interface Review { task_id: string; name: string; status: number; reason?: string; version: number; finished_at: number }
-interface Workflow { current_stage: string; review_status: string; stage_statuses?: Record<string,string>; status: number; stage: string; versions: Version[]; reviews: Review[] }
+interface Workflow { current_stage: string; review_status: string; stage_statuses?: Record<string,string>; status: number; stage: string; versions: Version[]; reviews: Review[]; withdrawals?: Array<{task_id:string;stage:string;version:number;reason:string;withdrawn_at:number}> }
 defineOptions({ name: 'BpmStudentApplications' });
 const stageNames: Record<string, string> = { card:'一卡', script:'剧本', final:'完善剧本', production:'后续制作', creative: '创意', draft: '一卡初稿', revision: '完善剧本', waiting_review: '等待后台审核', finished: '流程已结束' };
-const statusNames: Record<string,string> = { under_review:'审核中', needs_changes:'需修改', approved:'已通过', awaiting_submission:'待填写', rejected:'未通过', cancelled:'已取消', not_started:'未开始', not_applicable:'旧流程无此阶段' };
+const statusNames: Record<string,string> = { withdrawn:'已撤回', under_review:'审核中', needs_changes:'需修改', approved:'已通过', awaiting_submission:'待填写', rejected:'未通过', cancelled:'已取消', not_started:'未开始', not_applicable:'旧流程无此阶段' };
 const router = useRouter();
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -46,8 +47,8 @@ async function selectDetail(id: number) {
  detail.value = rows.value.find((item) => item.id === id);
  workflow.value = undefined; detailLoading.value = true; detailFailure.value = false;
  try {
-  const response = await requestClient.get<{ workflow: Workflow }>('/bpm/student-bridge/application-detail', { params: { id } });
-  if (request === detailRequest) workflow.value = response.workflow;
+  const response = await requestClient.get<{ application: Row; workflow: Workflow }>('/bpm/student-bridge/application-detail', { params: { id } });
+  if (request === detailRequest) { detail.value = response.application; workflow.value = response.workflow; }
  } catch { if (request === detailRequest) detailFailure.value = true; }
  finally { if (request === detailRequest) detailLoading.value = false; }
 }
@@ -74,7 +75,7 @@ onMounted(load);
   <Drawer :open="!!detail" title="创意申请及提交版本" width="min(760px, 100vw)" @close="closeDetail">
    <template v-if="detail">
     <p>{{ detail.name }} · {{ detail.school }} · {{ detail.phone }}</p>
-    <p class="mt-4 whitespace-pre-wrap break-words">{{ detail.creative }}</p>
+    <ScriptFields v-if="detail.creator_json" :data="JSON.parse(detail.creator_json)"/><p class="mt-4 whitespace-pre-wrap break-words">{{ detail.creative }}</p>
     <p v-if="detailLoading" class="mt-4">正在加载版本及审批记录…</p>
     <Alert v-if="detailFailure" class="mt-4" type="error" message="版本及审批记录加载失败">
      <template #action><Button size="small" @click="selectDetail(detail.id)">重试</Button></template>
@@ -86,9 +87,10 @@ onMounted(load);
      <h3 class="mb-3 mt-6 font-medium">历次提交版本</h3>
      <Collapse :default-active-key="workflow.versions.slice(-1).map((version) => version.version)">
       <CollapsePanel v-for="version in workflow.versions" :key="version.version" :header="`v${version.version} · ${stageNames[version.stage] || version.stage} · ${new Date(version.submitted_at).toLocaleString('zh-CN')}`">
-       <p class="whitespace-pre-wrap break-words">{{ version.content }}</p>
+       <ScriptFields v-if="version.data" :data="version.data" :application-id="detail.id"/><p v-else class="whitespace-pre-wrap break-words">{{ version.content }}</p>
       </CollapsePanel>
      </Collapse>
+     <h3 v-if="workflow.withdrawals?.length" class="mb-3 mt-6 font-medium">撤回记录</h3><div v-for="w in workflow.withdrawals||[]" :key="w.task_id" class="mb-3"><p>学生撤回 v{{ w.version }} · {{ stageNames[w.stage]||w.stage }} · {{ new Date(w.withdrawn_at).toLocaleString('zh-CN') }}</p><p class="whitespace-pre-wrap break-words">{{ w.reason || '未填写原因' }}</p></div>
      <h3 class="mb-3 mt-6 font-medium">审批记录</h3>
      <p v-if="!workflow.reviews.length">暂无审核记录</p>
      <div v-for="review in workflow.reviews" :key="review.task_id" class="mb-4 border-b pb-3">

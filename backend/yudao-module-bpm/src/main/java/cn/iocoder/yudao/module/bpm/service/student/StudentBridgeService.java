@@ -36,9 +36,14 @@ public class StudentBridgeService {
 
     public record Request(String externalUserId, String applicationId, String name, String phone,
                           String school, String creative,
-                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY) String title) {
+                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY) String title,
+                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) com.fasterxml.jackson.databind.JsonNode data,
+                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) com.fasterxml.jackson.databind.JsonNode creator) {
+        public Request(String externalUserId,String applicationId,String name,String phone,String school,String creative,String title) {
+            this(externalUserId,applicationId,name,phone,school,creative,title,null,null);
+        }
         public Request(String externalUserId,String applicationId,String name,String phone,String school,String creative) {
-            this(externalUserId,applicationId,name,phone,school,creative,null);
+            this(externalUserId,applicationId,name,phone,school,creative,null,null,null);
         }
     }
 
@@ -72,6 +77,8 @@ public class StudentBridgeService {
                     || r.phone() == null || !r.phone().matches("[+0-9() -]{7,25}")))
                 throw new IllegalArgumentException();
             if (r.title()!=null && r.title().codePointCount(0,r.title().length())>200) throw new IllegalArgumentException();
+            if (r.data()!=null && !r.data().isNull() && (!r.data().isObject() || r.data().toString().getBytes(StandardCharsets.UTF_8).length>131072)) throw new IllegalArgumentException();
+            if (r.creator()!=null && !r.creator().isNull() && (!r.creator().isObject() || r.creator().toString().length()>65536)) throw new IllegalArgumentException();
             return r;
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid student application");
@@ -91,10 +98,7 @@ public class StudentBridgeService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> submit(Request r) {
-        if (deptId <= 0)
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Student department not configured");
+    private Long ensureIdentity(Request r) {
         // A durable row lock serializes concurrent first submissions for the same external account.
         jdbc.update("INSERT INTO bpm_external_student(source, external_user_id, name, phone, school) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id",
                 SOURCE, r.externalUserId(), r.name(), r.phone(), r.school());
@@ -114,6 +118,45 @@ public class StudentBridgeService {
         var user = users.getUser(userId);
         if (user == null || !Integer.valueOf(0).equals(user.getStatus()))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Student account disabled");
+        return userId;
+    }
+
+    public record CreatorRequest(String externalUserId, long revision, com.fasterxml.jackson.databind.JsonNode profile) { }
+    public CreatorRequest parseCreator(String body) {
+        try {
+            var r=mapper.readValue(body,CreatorRequest.class);var p=r.profile();
+            if (r.externalUserId()==null || !r.externalUserId().matches("[1-9][0-9]{0,18}") || r.revision()<1 || p==null || !p.isObject()
+                    || body.getBytes(StandardCharsets.UTF_8).length>65536 || !valid(p.path("real_name").asText(),80)
+                    || !valid(p.path("school").asText(),200) || !p.path("phone").asText().matches("[+0-9() -]{7,25}")) throw new IllegalArgumentException();
+            return r;
+        } catch(Exception e) {throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid creator profile");}
+    }
+    @Transactional(rollbackFor=Exception.class)
+    public Map<String,Object> syncCreator(CreatorRequest r) {
+        if (deptId<=0) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Student department not configured");
+        var p=r.profile();Long userId=ensureIdentity(new Request(r.externalUserId(),"1",p.path("real_name").asText(),p.path("phone").asText(),p.path("school").asText(),"profile"));
+        var row=jdbc.queryForMap("SELECT * FROM bpm_external_student WHERE source=? AND external_user_id=? FOR UPDATE",SOURCE,r.externalUserId());
+        long current=((Number)row.getOrDefault("creator_revision",0L)).longValue();
+        var canonical=p.deepCopy();if(canonical.isObject()){((com.fasterxml.jackson.databind.node.ObjectNode)canonical).remove("workflow_sync_state");((com.fasterxml.jackson.databind.node.ObjectNode)canonical).remove("updated_at");}
+        String json=canonical.toString();
+        if (r.revision()==current && !Objects.equals(row.get("creator_json"),json)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Profile revision conflict");
+        if (r.revision()>current) {
+            jdbc.update("UPDATE bpm_external_student SET creator_revision=?,creator_json=?,name=?,phone=?,school=? WHERE id=?",r.revision(),json,p.path("real_name").asText(),p.path("phone").asText(),p.path("school").asText(),row.get("id"));
+            String nickname=p.path("real_name").asText();nickname=nickname.substring(0,nickname.offsetByCodePoints(0,Math.min(30,nickname.codePointCount(0,nickname.length()))));
+            jdbc.update("UPDATE system_users SET nickname=? WHERE id=? AND deleted=0",nickname,userId);
+        }
+        return Map.of("workflowUserId",userId,"revision",Math.max(current,r.revision()));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> submit(Request r) {
+        if (deptId <= 0)
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Student department not configured");
+        Long userId=ensureIdentity(r);
+        if(r.creator()!=null&&!r.creator().isNull()) {
+            if(!r.externalUserId().equals(r.creator().path("user_id").asText()) || r.creator().path("revision").asLong()<1)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid creator snapshot");
+            syncCreator(new CreatorRequest(r.externalUserId(),r.creator().path("revision").asLong(),r.creator()));
+        }
         String payload;
         try { payload = hash(mapper.writeValueAsString(r)); }
         catch (Exception e) { throw new IllegalArgumentException(e); }
@@ -123,16 +166,22 @@ public class StudentBridgeService {
         if (!payload.equals(application.get("payload_hash")) || userId.longValue() != ((Number)application.get("user_id")).longValue())
             throw new ResponseStatusException(HttpStatus.CONFLICT,"Application identity or content changed");
         String processId = (String)application.get("process_id");
+        if (processId==null && (r.data()==null || r.data().isNull() || r.creator()==null || r.creator().isNull())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"New applications require creator profile and structured data");
+        if(processId==null) StudentStageService.validateStructuredSnapshot(r.data());
+        if (processId==null) jdbc.update("UPDATE bpm_external_application SET data_json=?,creator_json=? WHERE id=?",r.data()==null||r.data().isNull()?null:r.data().toString(),r.creator()==null||r.creator().isNull()?null:r.creator().toString(),application.get("id"));
         if (processId == null) {
             Map<String,Object> vars = new HashMap<>();
             vars.put("applicationId", r.applicationId()); vars.put("externalSource",SOURCE);
             vars.put("externalUserId",r.externalUserId()); vars.put("studentName",r.name());
             vars.put("studentPhone",r.phone()); vars.put("studentSchool",r.school());
+            if(r.data()!=null && !r.data().isNull()) vars.put("studentForm",r.data().toString());
+            if(r.title()!=null&&!r.title().isBlank())vars.put("studentTitle",r.title());
+            if(r.data()!=null&&r.data().isObject()&&r.data().hasNonNull("genre"))vars.put("studentGenre",r.data().path("genre").asText());
             vars.put("projectName",r.title()!=null && !r.title().isBlank()?r.title():r.school() + " · " + r.name() + "的创意申请"); vars.put("creative",r.creative());
             processId = processes.createProcessInstance(userId,new BpmProcessInstanceCreateReqDTO().setProcessDefinitionKey(processKey)
                     .setBusinessKey(SOURCE + ":student:" + r.applicationId()).setVariables(vars));
             jdbc.update("UPDATE bpm_external_application SET process_id=? WHERE id=?",processId,application.get("id"));
-            jdbc.update("UPDATE bpm_external_student SET name=?,phone=?,school=? WHERE id=?",r.name(),r.phone(),r.school(),student.get("id"));
+            jdbc.update("UPDATE bpm_external_student SET name=?,phone=?,school=? WHERE user_id=? AND source='zhenzhihui' AND creator_revision=0",r.name(),r.phone(),r.school(),userId);
         }
         return Map.of("processId",processId,"workflowUserId",userId);
     }

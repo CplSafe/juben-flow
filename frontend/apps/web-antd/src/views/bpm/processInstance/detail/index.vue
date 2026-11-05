@@ -33,6 +33,7 @@ import { setConfAndFields2 } from '#/components/form-create';
 import { registerComponent } from '#/utils';
 
 import ProcessInstanceBpmnViewer from './modules/bpm-viewer.vue';
+import StudentSubmissions from '../../studentApplication/components/process-submissions.vue';
 import BpmProcessInstanceCommentList from './modules/comment-list.vue';
 import ProcessInstanceOperationButton from './modules/operation-button.vue';
 import ProcessPrint from './modules/process-print.vue';
@@ -306,6 +307,7 @@ onMounted(async () => {
             <TabPane tab="审批详情" key="form" class="pb-20 pr-3">
               <Row :gutter="[48, 24]">
                 <Col :xs="24" :sm="24" :md="18" :lg="18" :xl="16">
+                  <StudentSubmissions v-if="String(processInstance?.businessKey || '').startsWith('zhenzhihui:student:')" :process-id="props.id" />
                   <!-- 流程表单 -->
                   <div
                     v-if="

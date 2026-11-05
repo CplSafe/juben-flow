@@ -20,6 +20,7 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 public class StudentBridgeController {
     @Resource private StudentBridgeService service;
     @Resource private StudentStageService stages;
+    @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentDocumentService documents;
     @ModelAttribute
     public void noStore(HttpServletResponse response) { response.setHeader("Cache-Control", "no-store"); }
 
@@ -32,6 +33,14 @@ public class StudentBridgeController {
     private StudentBridgeService.Request request(String path,String body,String timestamp,String nonce,String signature,boolean submit) {
         service.authenticate(path,body,timestamp,nonce,signature);
         return service.parse(body,submit);
+    }
+    @PostMapping("/creator") @PermitAll
+    @Operation(summary="受信业务后端同步创作者资料，不创建流程")
+    public CommonResult<Map<String,Object>> creator(@RequestBody String body,
+            @RequestHeader("X-Bridge-Timestamp") String timestamp,@RequestHeader("X-Bridge-Nonce") String nonce,
+            @RequestHeader("X-Bridge-Signature") String signature) {
+        service.authenticate("/bpm/student-bridge/creator",body,timestamp,nonce,signature);
+        return success(service.syncCreator(service.parseCreator(body)));
     }
     @PostMapping("/submit") @PermitAll
     @Operation(summary="受信后端签名提交；自动同步学生并以本人发起SIMPLE流程")
@@ -55,6 +64,14 @@ public class StudentBridgeController {
         service.authenticate("/bpm/student-bridge/stage-submit",body,timestamp,nonce,signature);
         return success(stages.submit(stages.parse(body)));
     }
+    @PostMapping("/withdraw") @PermitAll
+    @Operation(summary="受信业务后端撤回本人当前内容审核，原子保存撤回记录")
+    public CommonResult<Map<String,Object>> withdraw(@RequestBody String body,
+            @RequestHeader("X-Bridge-Timestamp") String timestamp,@RequestHeader("X-Bridge-Nonce") String nonce,
+            @RequestHeader("X-Bridge-Signature") String signature) {
+        service.authenticate("/bpm/student-bridge/withdraw",body,timestamp,nonce,signature);
+        return success(stages.withdraw(stages.parseWithdraw(body)));
+    }
     @PostMapping("/summaries") @PermitAll
     @Operation(summary="受信后端批量查询本人申请阶段状态，最多100条")
     public CommonResult<Map<String,Object>> summaries(@RequestBody String body,
@@ -63,6 +80,12 @@ public class StudentBridgeController {
         service.authenticate("/bpm/student-bridge/summaries",body,timestamp,nonce,signature);
         return success(stages.summaries(stages.parseSummaries(body)));
     }
+    @GetMapping("/file-download") @PreAuthorize("isAuthenticated()")
+    @Operation(summary="审批人员下载当前申请历史版本中的附件；校验版本归属后代理流式下载")
+    public void file(@RequestParam long id,@RequestParam long fileId,HttpServletResponse response) {documents.download(id,fileId,response);}
+    @GetMapping("/process-detail") @PreAuthorize("isAuthenticated()")
+    @Operation(summary="当前流程参与人员查询结构化提交与附件；非参与者不可枚举其他申请")
+    public CommonResult<Map<String,Object>> processDetail(@RequestParam String processId) {return success(stages.adminDetail(documents.accessibleRecord(processId)));}
     @GetMapping("/application-detail") @PreAuthorize("@ss.hasPermission('bpm:student-application:query')")
     @Operation(summary="申请、历次提交版本及审批记录")
     public CommonResult<Map<String,Object>> detail(@RequestParam long id) { return success(stages.adminDetail(id)); }

@@ -29,6 +29,7 @@ class StudentStageServiceTest {
         Map<String,Object> app=new HashMap<>(Map.of("id",31L,"user_id",222L,"process_id","pid"));
         when(jdbc.queryForList(contains("FROM bpm_external_student"),eq("7"))).thenReturn(List.of(Map.of("user_id",222L)));
         when(jdbc.queryForList(startsWith("SELECT a.*"),eq("9"),eq(222L))).thenReturn(List.of(app));
+        when(jdbc.queryForObject(contains("COUNT(*) FROM bpm_external_submission"),eq(Integer.class),eq(31L))).thenReturn(0);
         when(users.getUser(222L)).thenReturn(new AdminUserDO().setStatus(0));
         task=mock(Task.class);query=mock(TaskQuery.class);
         when(tasks.createTaskQuery()).thenReturn(query);when(query.taskId("task-1")).thenReturn(query);when(query.singleResult()).thenReturn(task);
@@ -38,14 +39,14 @@ class StudentStageServiceTest {
         List<Map<String,Object>> stored=new ArrayList<>();
         when(jdbc.queryForList(contains("request_key=?"),anyLong(),anyString())).thenAnswer(inv->stored);
         when(jdbc.queryForObject(contains("MAX(version)"),eq(Integer.class),eq(31L))).thenReturn(2);
-        when(jdbc.update(startsWith("INSERT INTO bpm_external_submission"),any(),any(),any(),any(),any(),any(),any())).thenAnswer(inv->{
+        when(jdbc.update(startsWith("INSERT INTO bpm_external_submission"),any(),any(),any(),any(),any(),any(),any(),any())).thenAnswer(inv->{
             stored.add(new HashMap<>(Map.of("version",2,"stage","draft","task_id","task-1","payload_hash",inv.getArgument(6,String.class),"content","初稿正文","submitted_at",2000L)));return 1;
         });
         when(jdbc.queryForMap(contains("bpm_external_submission"),eq(31L),eq("submission-key"))).thenAnswer(inv->stored.get(0));
         var result=service.submit(request);assertEquals(2,result.get("version"));assertEquals("初稿正文",result.get("content"));
         assertEquals(result,service.submit(request));
         var args=ArgumentCaptor.forClass(BpmTaskApproveReqVO.class);verify(bpm,times(1)).approveTask(eq(222L),args.capture());
-        assertEquals(Map.of("script","初稿正文","scriptDraft","初稿正文"),args.getValue().getVariables());
+        assertEquals(Map.of("script","初稿正文","scriptDraft","初稿正文","studentWithdrawalTarget",""),args.getValue().getVariables());
         assertTrue(mockingDetails(jdbc).getInvocations().stream().filter(i->i.getMethod().getName().startsWith("query")).findFirst().orElseThrow().getArgument(0,String.class).endsWith("FOR UPDATE"));
         assertThrows(ResponseStatusException.class,()->service.submit(new StudentStageService.Submission("7","9","submission-key","task-1","draft","篡改内容")));
         assertEquals(1,stored.size());
@@ -88,5 +89,31 @@ class StudentStageServiceTest {
         assertEquals("creative",service.describe(instance,List.of(),List.of()).get("current_stage"));
         assertEquals("script",service.describe(instance,List.of(),approved).get("current_stage"));
         assertEquals("cancelled",service.describe(instance,List.of(),approved).get("review_status"));
+    }
+    @Test void withdrawalIsOwnedIdempotentAndCannotTargetANewerTask() {
+        var runtime=mock(org.flowable.engine.RuntimeService.class);
+        var builder=mock(org.flowable.engine.runtime.ChangeActivityStateBuilder.class,RETURNS_SELF);
+        var repo=mock(org.flowable.engine.RepositoryService.class);
+        ReflectionTestUtils.setField(service,"runtimeService",runtime);ReflectionTestUtils.setField(service,"repositoryService",repo);
+        when(runtime.createChangeActivityStateBuilder()).thenReturn(builder);
+        when(query.processInstanceId("pid")).thenReturn(query);when(query.list()).thenReturn(List.of(task));
+        when(task.getTaskDefinitionKey()).thenReturn("CreativeReview");when(task.getAssignee()).thenReturn("143");
+        when(jdbc.queryForObject(contains("MAX(version)"),eq(Integer.class),eq(31L))).thenReturn(1);
+        Map<String,Object> stored=new HashMap<>();
+        when(jdbc.queryForList(contains("FROM bpm_external_withdrawal"),eq(31L),eq("withdraw-key"))).thenAnswer(inv->stored.isEmpty()?List.of():List.of(new HashMap<>(stored)));
+        when(jdbc.update(startsWith("INSERT INTO bpm_external_withdrawal"),any(),any(),any(),any(),any(),any(),any())).thenAnswer(inv->{stored.putAll(Map.of("task_id","task-1","stage","creative","version",1,"reason","change","withdrawn_at",123L,"payload_hash",inv.getArgument(3,String.class)));return 1;});
+        when(jdbc.queryForMap(contains("FROM bpm_external_withdrawal"),eq(31L),eq("withdraw-key"))).thenReturn(Map.of("task_id","task-1","stage","creative","version",1,"reason","change","withdrawn_at",123L));
+        // JDBC vararg position 3 is task_id; payload hash is position 3 of SQL args, invocation index 3 because SQL is index0.
+        var r=new StudentStageService.WithdrawRequest("7","9","withdraw-key","task-1","change");
+        var first=service.withdraw(r);assertEquals("creative",first.get("stage"));assertEquals(first,service.withdraw(r));
+        verify(runtime,times(1)).createChangeActivityStateBuilder();verify(bpm).processTaskCanceled("task-1");
+        verify(builder).moveActivityIdsToSingleActivityId(List.of("CreativeReview"),"StartUserNode");
+        verify(builder).processVariable("RETURN_FLAG_StartUserNode",true);
+        assertThrows(ResponseStatusException.class,()->service.withdraw(new StudentStageService.WithdrawRequest("7","9","withdraw-new","stale-task","change")));
+        assertThrows(ResponseStatusException.class,()->service.withdraw(new StudentStageService.WithdrawRequest("8","9","withdraw-new","task-1","change")));
+    }
+    @Test void submissionWithoutStructuredDataIsRejectedOnceAnApplicationUsesIt() {
+        when(jdbc.queryForObject(contains("COUNT(*) FROM bpm_external_submission"),eq(Integer.class),eq(31L))).thenReturn(1);
+        assertThrows(ResponseStatusException.class,()->service.submit(request));verifyNoInteractions(bpm);
     }
 }

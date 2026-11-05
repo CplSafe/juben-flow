@@ -2,15 +2,18 @@
 import { onMounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { Alert, Button, Space, Table, Tag, message } from 'ant-design-vue';
+import { Alert, Button, Drawer, Space, Table, Tag, message } from 'ant-design-vue';
 import { requestClient } from '#/api/request';
+import ScriptFields from '../studentApplication/components/script-fields.vue';
 
 interface Row {
- id: number; user_id: number; external_user_id?: string; name: string; phone: string;
+ creator_json?:string; id: number; user_id: number; external_user_id?: string; name: string; phone: string;
  school: string; status?: number; creative?: string; process_id?: string; application_id?: string;
 }
 
 const rows = ref<Row[]>([]);
+const profile=ref<Record<string,unknown>>();
+function viewProfile(row:Row){try{profile.value=row.creator_json?JSON.parse(row.creator_json):{};}catch{message.error('资料读取失败');}}
 const loading = ref(false);
 const failure = ref(false);
 const offset = ref(0);
@@ -50,10 +53,12 @@ onMounted(load);
    <template #bodyCell="{ column, record }">
     <template v-if="column.key === 'status'"><Tag :color="record.status === 0 ? 'green' : 'default'">{{ record.status === 0 ? '启用' : '停用' }}</Tag></template>
     <template v-if="column.key === 'action'">
+     <Button type="link" @click="viewProfile(record)">入驻资料</Button>
      <Button v-access:code="['bpm:student:update']" type="link" :loading="changing === record.id" @click="changeStatus(record.id)">{{ record.status === 0 ? '停用' : '启用' }}</Button>
     </template>
    </template>
   </Table>
   <Space class="mt-4"><Button :disabled="offset === 0 || loading" @click="page(-50)">上一页</Button><span>第 {{ offset / 50 + 1 }} 页</span><Button :disabled="rows.length < 50 || loading" @click="page(50)">下一页</Button></Space>
+  <Drawer :open="!!profile" title="创作者入驻资料" width="min(640px,100vw)" @close="profile=undefined"><ScriptFields v-if="profile&&Object.keys(profile).length" :data="profile"/><p v-else>此账号尚未提交入驻资料，历史申请保持原信息。</p></Drawer>
  </Page>
 </template>

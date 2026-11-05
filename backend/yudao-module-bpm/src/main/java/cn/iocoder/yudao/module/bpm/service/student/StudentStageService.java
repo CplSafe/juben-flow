@@ -27,15 +27,20 @@ public class StudentStageService {
     @Resource private ObjectMapper mapper;
     @Resource private TaskService taskService;
     @Resource private HistoryService historyService;
+    @Resource private org.flowable.engine.RuntimeService runtimeService;
     @Resource private org.flowable.engine.RepositoryService repositoryService;
     @Resource private BpmTaskService bpmTasks;
     @Resource private BpmProcessInstanceService processes;
     @Resource private AdminUserService users;
     private static final Map<String,String> TASK_KEYS = Map.of("creative","StartUserNode","card","StudentDraft","script","StudentScript","final","StudentRevision","draft","StudentDraft","revision","StudentRevision");
+    private static boolean contentReview(String key) {return key!=null && REVIEW_KEYS.contains(key);}
     private static final Set<String> REVIEW_KEYS = Set.of("CreativeReview","OutlineReview","ScriptReview","FinalReview");
 
     public record Submission(String externalUserId, String applicationId, String requestKey,
-                             String taskId, String stage, String content) { }
+                             String taskId, String stage, String content,
+                             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) com.fasterxml.jackson.databind.JsonNode data) {
+        public Submission(String externalUserId,String applicationId,String requestKey,String taskId,String stage,String content) {this(externalUserId,applicationId,requestKey,taskId,stage,content,null);}
+    }
 
     public Submission parse(String body) {
         try {
@@ -48,8 +53,15 @@ public class StudentStageService {
                     || r.content().isBlank() || r.content().codePointCount(0,r.content().length())>20000
                     || ("creative".equals(r.stage()) && r.content().codePointCount(0,r.content().length())>12000))
                 throw new IllegalArgumentException();
+            if (r.data()!=null && !r.data().isNull() && (!r.data().isObject() || r.data().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>131072)) throw new IllegalArgumentException();
             return r;
         } catch (Exception e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid stage submission"); }
+    }
+
+    static void validateStructuredSnapshot(com.fasterxml.jackson.databind.JsonNode data) {
+        if(data==null||!data.isObject()||!data.path("attachments").isArray()||data.path("attachments").isEmpty()||data.path("attachments").size()>30)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Structured attachments required");
+        Set<Long> ids=new HashSet<>();
+        for(var file:data.path("attachments")) if(!file.path("file_id").canConvertToLong() || file.path("file_id").asLong()<=0 || !ids.add(file.path("file_id").asLong()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid attachment references");
     }
 
     private Map<String,Object> owned(String external, String application, boolean lock) {
@@ -65,7 +77,7 @@ public class StudentStageService {
     private static boolean writable(Task task, long userId, String processId) {
         return task!=null && !task.isSuspended() && task.getDelegationState()!=DelegationState.PENDING
                 && task.getParentTaskId()==null && Objects.equals(task.getProcessInstanceId(),processId)
-                && String.valueOf(userId).equals(task.getAssignee()) && TASK_KEYS.containsValue(task.getTaskDefinitionKey());
+                && String.valueOf(userId).equals(task.getAssignee()) && task.getTaskDefinitionKey()!=null && TASK_KEYS.containsValue(task.getTaskDefinitionKey());
     }
 
     @Transactional(rollbackFor=Exception.class)
@@ -84,16 +96,30 @@ public class StudentStageService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"Submission key reused with different content");
             return version(replay.get(0));
         }
+        boolean structured=app.get("data_json")!=null || jdbc.queryForObject("SELECT COUNT(*) FROM bpm_external_submission WHERE application_ref=? AND data_json IS NOT NULL",Integer.class,app.get("id"))>0;
+        if (structured && (r.data()==null || r.data().isNull())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Structured stage data required");
+        if(r.data()!=null&&!r.data().isNull())validateStructuredSnapshot(r.data());
         String processId=(String)app.get("process_id");
         Task task=taskService.createTaskQuery().taskId(r.taskId()).singleResult();
         if (!writable(task,userId,processId) || !TASK_KEYS.get(r.stage()).equals(task.getTaskDefinitionKey()))
             throw new ResponseStatusException(HttpStatus.CONFLICT,"Stage is not currently assigned to this student");
         int number=jdbc.queryForObject("SELECT COALESCE(MAX(version),1)+1 FROM bpm_external_submission WHERE application_ref=?",Integer.class,app.get("id"));
-        jdbc.update("INSERT INTO bpm_external_submission(application_ref,version,stage,task_id,request_key,payload_hash,content) VALUES(?,?,?,?,?,?,?)",
-                app.get("id"),number,r.stage(),r.taskId(),r.requestKey(),digest,r.content());
+        String structuredJson=null;
+        if (r.data()!=null && !r.data().isNull()) {
+            var data=r.data().deepCopy();
+            if ("final".equals(r.stage())) ((com.fasterxml.jackson.databind.node.ObjectNode)data).put("originality_confirmed_at",java.time.Instant.now().toString());
+            structuredJson=data.toString();
+        }
+        jdbc.update("INSERT INTO bpm_external_submission(application_ref,version,stage,task_id,request_key,payload_hash,content,data_json) VALUES(?,?,?,?,?,?,?,?)",
+                app.get("id"),number,r.stage(),r.taskId(),r.requestKey(),digest,r.content(),structuredJson);
         Map<String,Object> vars=new HashMap<>();
         String field = switch (r.stage()) { case "creative" -> "creative"; case "card", "draft" -> "scriptDraft"; default -> "script"; };
         vars.put(field,r.content());
+        vars.put("studentWithdrawalTarget","");
+        if (r.data()!=null && !r.data().isNull()) {
+            vars.put("studentForm",r.data().toString());
+            if("creative".equals(r.stage())) {vars.put("projectName",r.data().path("title").asText());vars.put("studentTitle",r.data().path("title").asText());vars.put("studentGenre",r.data().path("genre").asText());}
+        }
         if ("draft".equals(r.stage())) vars.put("script",r.content());
         // The task and immutable version commit together; no administrator/service-account impersonation.
         FlowableUtils.executeAuthenticatedUserId(userId,()->{
@@ -104,14 +130,20 @@ public class StudentStageService {
         return version(jdbc.queryForMap("SELECT *,CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) AS submitted_at FROM bpm_external_submission WHERE application_ref=? AND request_key=?",app.get("id"),r.requestKey()));
     }
 
-    private static Map<String,Object> version(Map<String,Object> row) {
-        return Map.of("version",((Number)row.get("version")).intValue(),"stage",row.get("stage"),"content",row.get("content"),
-                "task_id",row.get("task_id"),"submitted_at",((Number)row.get("submitted_at")).longValue());
+    private Map<String,Object> version(Map<String,Object> row) {
+        Map<String,Object> out=new HashMap<>(Map.of("version",((Number)row.get("version")).intValue(),"stage",row.get("stage"),"content",row.get("content"),
+                "task_id",row.get("task_id"),"submitted_at",((Number)row.get("submitted_at")).longValue()));
+        out.put("data",json(row.get("data_json")));return out;
     }
+    private Object json(Object raw) {
+        if (raw==null) return null;
+        try{return mapper.readValue(raw.toString(),Map.class);}catch(Exception e){throw new IllegalStateException("Stored structured snapshot unavailable",e);}
+    }
+
     private List<Map<String,Object>> versions(Map<String,Object> app) {
         List<Map<String,Object>> out=new ArrayList<>();
-        out.add(Map.of("version",1,"stage","creative","content",app.get("creative"),"task_id","",
-                "submitted_at",((Number)app.get("submitted_at")).longValue()));
+        Map<String,Object> initial=new HashMap<>(Map.of("version",1,"stage","creative","content",app.get("creative"),"task_id","","submitted_at",((Number)app.get("submitted_at")).longValue()));
+        initial.put("data",json(app.get("data_json")));out.add(initial);
         for (var row:jdbc.queryForList("SELECT *,CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) AS submitted_at FROM bpm_external_submission WHERE application_ref=? ORDER BY version",app.get("id"))) out.add(version(row));
         return out;
     }
@@ -135,7 +167,8 @@ public class StudentStageService {
                 String stage=studentStage(task.getTaskDefinitionKey(),four);
                 if (stage!=null && writable(task,userId,processId)) {
                     result.put("stage",stage);
-                    result.put("current_task",Map.of("task_id",task.getId(),"stage",stage,"name",task.getName(),"content","creative".equals(stage)?snapshots.get(snapshots.size()-1).get("content"):snapshots.get(snapshots.size()-1).get("stage").equals("creative")?"":snapshots.get(snapshots.size()-1).get("content")));
+                    Map<String,Object> edit=new HashMap<>(Map.of("task_id",task.getId(),"stage",stage,"name",task.getName(),"content","creative".equals(stage)?snapshots.get(snapshots.size()-1).get("content"):snapshots.get(snapshots.size()-1).get("stage").equals("creative")?"":snapshots.get(snapshots.size()-1).get("content")));
+                    edit.put("data",prefill(stage,snapshots));result.put("current_task",edit);
                     break;
                 }
             }
@@ -143,15 +176,41 @@ public class StudentStageService {
         List<Map<String,Object>> reviews=new ArrayList<>();
         for (var task:historyService.createHistoricTaskInstanceQuery().processInstanceId(processId).finished().includeTaskLocalVariables().orderByHistoricTaskInstanceEndTime().asc().list()) {
             Object status=task.getTaskLocalVariables().get(TASK_VARIABLE_STATUS);
-            if (!REVIEW_KEYS.contains(task.getTaskDefinitionKey()) || !(status instanceof Number n) || !Set.of(2,3,5).contains(n.intValue())) continue;
+            if (!contentReview(task.getTaskDefinitionKey()) || !(status instanceof Number n) || !Set.of(2,3,5).contains(n.intValue())) continue;
             int number=1;
             for (var v:snapshots) if (((Number)v.get("submitted_at")).longValue()<=task.getCreateTime().getTime()) number=((Number)v.get("version")).intValue();
             Map<String,Object> review=new HashMap<>();review.put("task_id",task.getId());review.put("node_key",task.getTaskDefinitionKey());review.put("name",task.getName());
             review.put("status",status);review.put("reason",task.getTaskLocalVariables().get(TASK_VARIABLE_REASON));review.put("version",number);review.put("finished_at",task.getEndTime().getTime());reviews.add(review);
         }
         result.put("versions",snapshots);result.put("reviews",reviews);
+        result.put("structured",snapshots.stream().anyMatch(v->v.get("data")!=null));
+        var actions=jdbc.queryForList("SELECT task_id,stage,version,reason,CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) AS withdrawn_at FROM bpm_external_withdrawal WHERE application_ref=? ORDER BY id",app.get("id"));
+        result.put("withdrawals",actions);
+        List<Task> active=taskService.createTaskQuery().processInstanceId(processId).list();
+        boolean can=instance.getEndTime()==null && user!=null && Integer.valueOf(0).equals(user.getStatus()) && !active.isEmpty() && active.stream().allMatch(t->contentReview(t.getTaskDefinitionKey()) && !t.isSuspended());
+        result.put("can_withdraw",can);
+        if(can)result.put("withdraw_task_id",active.get(0).getId());
         result.putAll(describe(instance, taskService.createTaskQuery().processInstanceId(processId).list(), reviews));
         return result;
+    }
+
+    private Object prefill(String stage,List<Map<String,Object>> snapshots) {
+        for (int i=snapshots.size()-1;i>=0;i--) {
+            var v=snapshots.get(i);
+            if(stage.equals(v.get("stage")) && v.get("data") instanceof Map<?,?> raw) {
+                Map<String,Object> out=new HashMap<>();raw.forEach((k,val)->out.put(k.toString(),val));
+                if("final".equals(stage)){out.remove("originality_confirmed");out.remove("originality_confirmed_at");out.remove("originality_version");}
+                return out;
+            }
+        }
+        Map<String,Object> inherited=new HashMap<>();
+        if (!Set.of("card","script").contains(stage)) return null;
+        for(var v:snapshots) if(v.get("data") instanceof Map<?,?> raw) {
+            if(raw.get("title")!=null) inherited.put("title_zh",raw.get("title"));
+            if(raw.get("title_zh")!=null) inherited.put("title_zh",raw.get("title_zh"));
+            if("script".equals(stage) && raw.get("genre")!=null) inherited.put("genre",raw.get("genre"));
+        }
+        return inherited.isEmpty()?null:inherited;
     }
 
     private boolean fourStages(String definition) {
@@ -160,10 +219,12 @@ public class StudentStageService {
     }
 
     static String studentStage(String key, boolean four) {
+        if(key==null)return null;
         return switch(key) { case "StartUserNode" -> "creative"; case "StudentDraft" -> four?"card":"draft";
             case "StudentScript" -> "script"; case "StudentRevision" -> four?"final":"revision"; default -> null; };
     }
     static String phase(String key, boolean four) {
+        if(key==null)return "production";
         return switch(key) { case "StartUserNode","CreativeReview" -> "creative";
             case "StudentDraft","OutlineReview" -> "card"; case "StudentScript" -> "script";
             case "ScriptReview" -> four?"script":"final"; case "StudentRevision","FinalReview" -> "final"; default -> "production"; };
@@ -183,6 +244,8 @@ public class StudentStageService {
             }
             break;
         }
+        Object withdrawalTarget=instance.getProcessVariables().get("studentWithdrawalTarget");
+        if (instance.getEndTime()==null && withdrawalTarget instanceof String target && !target.isBlank() && tasks.stream().anyMatch(t->target.equals(t.getTaskDefinitionKey()))) state="withdrawn";
         if (status==3 || status==4) {
             state=status==3?"rejected":"cancelled";
             current="creative";
@@ -198,7 +261,45 @@ public class StudentStageService {
         List<String> order=List.of("creative","card","script","final","production");
         for (String p:order.subList(0,4)) stages.put(p,order.indexOf(p)<order.indexOf(current)?"approved":p.equals(current)?state:"not_started");
         if (!four) stages.put("script","not_applicable");
-        return Map.of("current_stage",current,"review_status",state,"stage_statuses",stages,"flow_version",four?4:3);
+        Map<String,Object> description=new HashMap<>(Map.of("current_stage",current,"review_status",state,"stage_statuses",stages,"flow_version",four?4:3));
+        Object title=instance.getProcessVariables().get("studentTitle"),genre=instance.getProcessVariables().get("studentGenre");
+        description.put("display_title",title instanceof String?title:"");description.put("display_genre",genre instanceof String?genre:"");return description;
+    }
+
+    public record WithdrawRequest(String externalUserId,String applicationId,String requestKey,String taskId,String reason) { }
+    public WithdrawRequest parseWithdraw(String body) {
+        try {
+            var r=mapper.readValue(body,WithdrawRequest.class);
+            if(r.externalUserId()==null || !r.externalUserId().matches("[1-9][0-9]{0,18}") || r.applicationId()==null || !r.applicationId().matches("[1-9][0-9]{0,18}") || r.requestKey()==null || !r.requestKey().matches("[a-zA-Z0-9_-]{8,80}") || r.taskId()==null || r.taskId().isBlank() || r.taskId().length()>128 || r.reason()==null || r.reason().codePointCount(0,r.reason().length())>500)throw new IllegalArgumentException();
+            return r;
+        }catch(Exception e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid withdrawal");}
+    }
+    @Transactional(rollbackFor=Exception.class)
+    public Map<String,Object> withdraw(WithdrawRequest r) {
+        var app=owned(r.externalUserId(),r.applicationId(),true);long userId=((Number)app.get("user_id")).longValue();
+        var user=users.getUser(userId);if(user==null || !Integer.valueOf(0).equals(user.getStatus()))throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        String hash;
+        try{hash=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(mapper.writeValueAsBytes(r)));}catch(Exception e){throw new IllegalArgumentException(e);}
+        var previous=jdbc.queryForList("SELECT task_id,stage,version,reason,payload_hash,CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) AS withdrawn_at FROM bpm_external_withdrawal WHERE application_ref=? AND request_key=?",app.get("id"),r.requestKey());
+        if(!previous.isEmpty()) {if(!hash.equals(previous.get(0).remove("payload_hash")))throw new ResponseStatusException(HttpStatus.CONFLICT);return previous.get(0);}
+        String pid=(String)app.get("process_id");
+        // Lock actual active task rows before reading their stage; concurrent staff approval either wins before this read, or sees deleted/stale tasks and rolls back.
+        jdbc.queryForList("SELECT ID_ FROM ACT_RU_TASK WHERE PROC_INST_ID_=? ORDER BY ID_ FOR UPDATE",pid);
+        var active=taskService.createTaskQuery().processInstanceId(pid).list();
+        Task current=active.stream().filter(t->r.taskId().equals(t.getId())).findFirst().orElse(null);
+        if(current==null || current.isSuspended() || !contentReview(current.getTaskDefinitionKey()) || active.stream().anyMatch(t->!current.getTaskDefinitionKey().equals(t.getTaskDefinitionKey()) || t.isSuspended()))throw new ResponseStatusException(HttpStatus.CONFLICT,"Review task changed");
+        String target=switch(current.getTaskDefinitionKey()){case "CreativeReview"->"StartUserNode";case "OutlineReview"->"StudentDraft";case "ScriptReview"->fourStages(current.getProcessDefinitionId())?"StudentScript":"StudentRevision";default->"StudentRevision";};
+        int number=jdbc.queryForObject("SELECT COALESCE(MAX(version),1) FROM bpm_external_submission WHERE application_ref=?",Integer.class,app.get("id"));
+        String stage=phase(current.getTaskDefinitionKey(),fourStages(current.getProcessDefinitionId()));
+        jdbc.update("INSERT INTO bpm_external_withdrawal(application_ref,request_key,payload_hash,task_id,stage,version,reason) VALUES(?,?,?,?,?,?,?)",app.get("id"),r.requestKey(),hash,r.taskId(),stage,number,r.reason());
+        FlowableUtils.executeAuthenticatedUserId(userId,()->{
+            for(Task task:active){taskService.addComment(task.getId(),pid,"withdraw","学生撤回本轮提交："+r.reason());bpmTasks.processTaskCanceled(task.getId());}
+            runtimeService.createChangeActivityStateBuilder().processInstanceId(pid)
+                .moveActivityIdsToSingleActivityId(List.of(current.getTaskDefinitionKey()),target)
+                .processVariable(String.format(PROCESS_INSTANCE_VARIABLE_RETURN_FLAG,target),Boolean.TRUE)
+                .processVariable("studentWithdrawalTarget",target).changeState();return null;
+        });
+        return jdbc.queryForMap("SELECT task_id,stage,version,reason,CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) AS withdrawn_at FROM bpm_external_withdrawal WHERE application_ref=? AND request_key=?",app.get("id"),r.requestKey());
     }
 
     public record SummaryRequest(String externalUserId,List<String> applicationIds) { }
@@ -229,7 +330,7 @@ public class StudentStageService {
             List<Map<String,Object>> reviews=new ArrayList<>();
             for(var t:history) {
                 Object status=t.getTaskLocalVariables().get(TASK_VARIABLE_STATUS);
-                if (pid.equals(t.getProcessInstanceId()) && REVIEW_KEYS.contains(t.getTaskDefinitionKey()) && status instanceof Number n && Set.of(2,3,5).contains(n.intValue()))
+                if (pid.equals(t.getProcessInstanceId()) && contentReview(t.getTaskDefinitionKey()) && status instanceof Number n && Set.of(2,3,5).contains(n.intValue()))
                     reviews.add(Map.of("node_key",t.getTaskDefinitionKey(),"status",status));
             }
             var summary=new HashMap<>(describe(instance,active.stream().filter(t->pid.equals(t.getProcessInstanceId())).toList(),reviews));

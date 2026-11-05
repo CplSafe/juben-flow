@@ -66,7 +66,7 @@ class StudentBridgeServiceTest {
         when(jdbc.queryForObject(anyString(),eq(Integer.class),eq(123L))).thenReturn(1);
         Map<String,Object> student=new HashMap<>();student.put("id",1L);
         when(jdbc.queryForMap(contains("bpm_external_student"),anyString(),anyString())).thenReturn(student);
-        var req=new StudentBridgeService.Request("7","9","学生","13800000000","学校","创意","Sample Title");
+        var req=new StudentBridgeService.Request("7","9","学生","13800000000","学校","创意","Sample Title",cn.iocoder.yudao.framework.common.util.json.JsonUtils.parseTree("{\"title\":\"Sample Title\",\"attachments\":[{\"file_id\":1}]}"),cn.iocoder.yudao.framework.common.util.json.JsonUtils.parseTree("{\"user_id\":7,\"revision\":1,\"real_name\":\"Creator\",\"phone\":\"13800000000\",\"school\":\"School\"}"));
         when(users.createExternalStudent(any())).thenReturn(222L);
         when(users.getUser(222L)).thenReturn(new AdminUserDO().setStatus(0));
         Map<String,Object> application=new HashMap<>(Map.of("id",2L,"user_id",222L));

@@ -69,3 +69,15 @@
 - Full database/config backup: /data/juben-flow/backup/student-release-20261105-105003. Model/form snapshots: four-stage-model. Release artifacts and reports: /data/juben-flow/releases/four-stage-20261105.
 - Canary acceptance passed all four return/resubmit cycles (8 immutable versions/reviews), concurrent retries, scoped summaries, real business-runtime filters/counts and full production completion. Main runtime verification is recorded in the release directory after switching.
 - Replace only workflow backend/static frontend and business api. Preserve worker, identity service and Nginx. Never remove the stage-capable backend while its new-definition instances remain live; do not restore full databases over new records.
+
+
+## 2026-11-05 Structured creator intake (PRO / test)
+
+- Business code 686ff9e; workflow code 327b3feb plus frontend download timeout fix 9bbde6bb. Both main branches pushed and pulled on PRO. No production server changes.
+- Creator GET/PUT synchronizes actual student identities without launching flows; applications retain profile snapshots. New applications require structured stage data and 1-30 verified document attachments. Legacy UUID replays and plaintext in-flight workflows remain supported.
+- Card episode counts are positive integers without prototype range limits. Script paywall_episodes contains concrete distinct episode numbers, not a count. Final originality timestamps are server-generated and renewed on resubmission.
+- Additive workflow SQL structured-intake.sql and business migration 202611050002 preserve all existing records. Withdrawal returns an owned active content review to the matching student task, with separate history and unchanged prior versions.
+- Reviewer documents require explicit administrative permission or participation in the bound process, plus membership in immutable submission snapshots. Reverse download proxy uses the existing private bridge secret and replay-protected signatures; configure ZZH_STUDENT_BUSINESS_URL for Java to reach the business API. Browser requests never receive that secret or private object keys.
+- Release /data/juben-flow/releases/intake-20261105 contains manifest.json, verification.json, go-main.json and reviewer-main.json. Backup /data/juben-flow/backup/intake-20261105-122840 contains workflow SQL, business dump, configuration and previous runtime files.
+- Main and isolated acceptance: real S3 document upload, four content stages, 7 immutable versions, 3 withdrawals with retry, 4 content approvals, 4 concurrent stage retries, list/status counts, reviewer download byte equality, attachment membership, original-session enforcement and public Swagger. Nginx configuration, worker and identity service unchanged.
+- Deploy only workflow backend/static frontend and business API. Rollback must preserve structured-capable services for records already created; never restore whole databases over later user records or drop additive tables.

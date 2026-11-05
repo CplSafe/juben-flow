@@ -30,3 +30,5 @@ INSERT INTO system_user_role(user_id,role_id,creator,updater)
 INSERT INTO system_role_menu(role_id,menu_id,creator,updater)
  SELECT r.id,m.id,'1','1' FROM system_role r JOIN system_menu m ON m.permission IN ('bpm:student:query','bpm:student-application:query','bpm:student:assign') AND m.deleted=0
  WHERE r.code='script_assignment_director' AND r.deleted=0 AND NOT EXISTS(SELECT 1 FROM system_role_menu rm WHERE rm.role_id=r.id AND rm.menu_id=m.id AND rm.deleted=0);
+
+-- After direct SQL grants, refresh the affected USER_ROLE_ID_LIST and MENU_ROLE_ID_LIST/permission-menu caches through the permission service or targeted cache eviction, then re-login the director. Do not flush unrelated Redis data.

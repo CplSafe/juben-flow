@@ -8,11 +8,12 @@ import { fileKind, formatFileSize, readableMarkdown, type ScriptAttachment } fro
 import {
   getDocument,
   GlobalWorkerOptions,
+  version as pdfVersion,
   type PDFDocumentProxy,
   type RenderTask,
 } from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-GlobalWorkerOptions.workerSrc = workerUrl;
+const pdfAssets = `${import.meta.env.BASE_URL}pdfjs/${pdfVersion}/`;
+GlobalWorkerOptions.workerSrc = `${pdfAssets}pdf.worker.min.js`;
 const props = defineProps<{
   applicationId: number;
   files: ScriptAttachment[];
@@ -129,10 +130,10 @@ async function load() {
         data,
         enableXfa: false,
         stopAtErrors: true,
-        cMapUrl: `${import.meta.env.BASE_URL}pdfjs/cmaps/`,
+        cMapUrl: `${pdfAssets}cmaps/`,
         cMapPacked: true,
-        standardFontDataUrl: `${import.meta.env.BASE_URL}pdfjs/standard_fonts/`,
-        wasmUrl: `${import.meta.env.BASE_URL}pdfjs/wasm/`,
+        standardFontDataUrl: `${pdfAssets}standard_fonts/`,
+        wasmUrl: `${pdfAssets}wasm/`,
       });
       pending = task;
       const loaded = await task.promise;
@@ -221,10 +222,10 @@ defineExpose({ open });
           <div class="reader-filename">{{ current?.file_name }}</div>
           <div class="reader-actions">
             <template v-if="pages"
-              ><Button size="small" :disabled="page <= 1" @click="page--"
+              ><Button size="small" aria-label="上一页" :disabled="page <= 1" @click="page--"
                 ><IconifyIcon icon="lucide:chevron-left" /></Button
               ><span class="page-counter">{{ page }} / {{ pages }}</span
-              ><Button size="small" :disabled="page >= pages" @click="page++"
+              ><Button size="small" aria-label="下一页" :disabled="page >= pages" @click="page++"
                 ><IconifyIcon icon="lucide:chevron-right" /></Button
               ><Select
                 v-model:value="zoom"
@@ -532,6 +533,7 @@ defineExpose({ open });
 @media (max-width: 850px) {
   .preview-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .preview-library {
     display: flex;

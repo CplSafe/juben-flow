@@ -66,7 +66,7 @@ class StudentBridgeServiceTest {
         when(jdbc.queryForObject(anyString(),eq(Integer.class),eq(123L))).thenReturn(1);
         Map<String,Object> student=new HashMap<>();student.put("id",1L);
         when(jdbc.queryForMap(contains("bpm_external_student"),anyString(),anyString())).thenReturn(student);
-        var req=new StudentBridgeService.Request("7","9","学生","13800000000","学校","创意");
+        var req=new StudentBridgeService.Request("7","9","学生","13800000000","学校","创意","Sample Title");
         when(users.createExternalStudent(any())).thenReturn(222L);
         when(users.getUser(222L)).thenReturn(new AdminUserDO().setStatus(0));
         Map<String,Object> application=new HashMap<>(Map.of("id",2L,"user_id",222L));
@@ -91,11 +91,20 @@ class StudentBridgeServiceTest {
         var start=ArgumentCaptor.forClass(BpmProcessInstanceCreateReqDTO.class);verify(processes).createProcessInstance(eq(222L),start.capture());
         assertEquals("zhenzhihui:student:9",start.getValue().getBusinessKey());
         assertEquals("7",start.getValue().getVariables().get("externalUserId"));
+        assertEquals("Sample Title",start.getValue().getVariables().get("projectName"));
         assertEquals(result,service.submit(req));
         verify(users,times(1)).createExternalStudent(any());
         verify(processes,times(1)).createProcessInstance(eq(222L),any(BpmProcessInstanceCreateReqDTO.class));
         assertThrows(ResponseStatusException.class,()->service.submit(new StudentBridgeService.Request("7","9","学生","13800000000","学校","修改后的创意")));
         when(users.getUser(222L)).thenReturn(new AdminUserDO().setStatus(1));
         assertThrows(ResponseStatusException.class,()->service.submit(req));
+    }
+    @Test void optionalTitlePreservesLegacyPayloadHash() throws Exception {
+        var mapper=new ObjectMapper();
+        var legacy=new StudentBridgeService.Request("7","9","name","13800000000","school","creative");
+        String expected="{\"externalUserId\":\"7\",\"applicationId\":\"9\",\"name\":\"name\",\"phone\":\"13800000000\",\"school\":\"school\",\"creative\":\"creative\"}";
+        assertEquals(expected,mapper.writeValueAsString(legacy));
+        var blank=new StudentBridgeService.Request("7","9","name","13800000000","school","creative","");
+        assertEquals(expected,mapper.writeValueAsString(blank));
     }
 }

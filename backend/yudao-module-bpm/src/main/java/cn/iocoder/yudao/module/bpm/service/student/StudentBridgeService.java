@@ -35,7 +35,12 @@ public class StudentBridgeService {
     private static final String SOURCE = "zhenzhihui";
 
     public record Request(String externalUserId, String applicationId, String name, String phone,
-                          String school, String creative) { }
+                          String school, String creative,
+                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY) String title) {
+        public Request(String externalUserId,String applicationId,String name,String phone,String school,String creative) {
+            this(externalUserId,applicationId,name,phone,school,creative,null);
+        }
+    }
 
     public void authenticate(String path, String body, String timestamp, String nonce, String signature) {
         try {
@@ -66,6 +71,7 @@ public class StudentBridgeService {
             if (submission && (!valid(r.name(), 80) || !valid(r.school(), 200) || !valid(r.creative(), 12000)
                     || r.phone() == null || !r.phone().matches("[+0-9() -]{7,25}")))
                 throw new IllegalArgumentException();
+            if (r.title()!=null && r.title().codePointCount(0,r.title().length())>200) throw new IllegalArgumentException();
             return r;
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid student application");
@@ -122,7 +128,7 @@ public class StudentBridgeService {
             vars.put("applicationId", r.applicationId()); vars.put("externalSource",SOURCE);
             vars.put("externalUserId",r.externalUserId()); vars.put("studentName",r.name());
             vars.put("studentPhone",r.phone()); vars.put("studentSchool",r.school());
-            vars.put("projectName",r.school() + " · " + r.name() + "的创意申请"); vars.put("creative",r.creative());
+            vars.put("projectName",r.title()!=null && !r.title().isBlank()?r.title():r.school() + " · " + r.name() + "的创意申请"); vars.put("creative",r.creative());
             processId = processes.createProcessInstance(userId,new BpmProcessInstanceCreateReqDTO().setProcessDefinitionKey(processKey)
                     .setBusinessKey(SOURCE + ":student:" + r.applicationId()).setVariables(vars));
             jdbc.update("UPDATE bpm_external_application SET process_id=? WHERE id=?",processId,application.get("id"));

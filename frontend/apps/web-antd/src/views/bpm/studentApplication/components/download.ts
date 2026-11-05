@@ -4,7 +4,7 @@ export async function downloadScriptFile(applicationId: number, fileId: number, 
   if (active) throw new Error('请等待当前附件下载完成');
   active = true;
   try {
-    const blob = await requestClient.download('/bpm/student-bridge/file-download', { params: { id: applicationId, fileId } });
+    const blob = await requestClient.download('/bpm/student-bridge/file-download', { params: { id: applicationId, fileId }, timeout: 330_000 });
     if (!(blob instanceof Blob)) throw new Error('附件下载响应无效');
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a'); link.href = url; link.download = name; link.click();

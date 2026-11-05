@@ -59,3 +59,13 @@
 - Full pre-release database/runtime backup: /data/juben-flow/backup/student-release-20261104-165813. Model/form snapshots: staged-model within that directory.
 - Rollback API by retagging zhenzhihui-backend:before-stages-0a8f6a5 and recreating only api. Restore backed-up Jar/frontend and recreate only backend if needed. Keep stage-capable services for instances already started on the new definition; do not drop definitions or restore entire databases over live records.
 - DEV production was not contacted. Nginx, other sites, worker and identity service are outside the replacement scope.
+
+## 2026-11-05 Four content phases (PRO / test)
+
+- Official SIMPLE upgrade: creative review, student card, card review, student script, script review, student refinement, final review, then the original production tasks. Rejected content returns to its own student task; creative returns to StartUserNode. Staff and OR-sign remain unchanged.
+- Existing instances retain their original definition and legacy draft/revision task keys. New content-stage summaries distinguish under_review, needs_changes, awaiting_submission and approved; production completion remains a separate engine status.
+- Signed summaries accept at most 100 owned application IDs, use bulk engine queries and expose no form bodies or staff contact data. Business list filters/counts are computed before pagination; status counts ignore the status tab but follow other filters.
+- Additive business migration adds optional title/genre; immutable submission table is reused without destructive updates. Original frontend structured profiles, attachments and withdrawal remain separate capabilities.
+- Full database/config backup: /data/juben-flow/backup/student-release-20261105-105003. Model/form snapshots: four-stage-model. Release artifacts and reports: /data/juben-flow/releases/four-stage-20261105.
+- Canary acceptance passed all four return/resubmit cycles (8 immutable versions/reviews), concurrent retries, scoped summaries, real business-runtime filters/counts and full production completion. Main runtime verification is recorded in the release directory after switching.
+- Replace only workflow backend/static frontend and business api. Preserve worker, identity service and Nginx. Never remove the stage-capable backend while its new-definition instances remain live; do not restore full databases over new records.

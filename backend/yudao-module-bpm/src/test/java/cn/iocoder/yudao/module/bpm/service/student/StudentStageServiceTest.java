@@ -66,4 +66,27 @@ class StudentStageServiceTest {
         assertThrows(ResponseStatusException.class,()->service.parse("{}"));
         assertThrows(ResponseStatusException.class,()->service.parse("{\"externalUserId\":\"7\",\"applicationId\":\"9\",\"requestKey\":\"submission-key\",\"taskId\":\"task-1\",\"stage\":\"approval\",\"content\":\"内容\"}"));
     }
+    @Test void fourStageStatusesDistinguishReturnsAndNextStage() {
+        var repo=mock(org.flowable.engine.RepositoryService.class);
+        var model=new org.flowable.bpmn.model.BpmnModel();var process=new org.flowable.bpmn.model.Process();
+        var finalNode=new org.flowable.bpmn.model.UserTask();finalNode.setId("FinalReview");process.addFlowElement(finalNode);model.addProcess(process);
+        ReflectionTestUtils.setField(service,"repositoryService",repo);when(repo.getBpmnModel("def")).thenReturn(model);
+        var instance=mock(org.flowable.engine.history.HistoricProcessInstance.class);when(instance.getProcessDefinitionId()).thenReturn("def");
+        when(instance.getProcessVariables()).thenReturn(Map.of(cn.iocoder.yudao.module.bpm.framework.flowable.core.enums.BpmnVariableConstants.PROCESS_INSTANCE_VARIABLE_STATUS,1));
+        when(task.getTaskDefinitionKey()).thenReturn("StudentScript");
+        var approved=List.<Map<String,Object>>of(Map.of("node_key","OutlineReview","status",2));
+        var normal=service.describe(instance,List.of(task),approved);
+        assertEquals("script",normal.get("current_stage"));assertEquals("awaiting_submission",normal.get("review_status"));
+        var returned=service.describe(instance,List.of(task),List.of(Map.of("node_key","ScriptReview","status",5)));
+        assertEquals("needs_changes",returned.get("review_status"));
+        when(task.getTaskDefinitionKey()).thenReturn("ScriptReview");assertEquals("under_review",service.describe(instance,List.of(task),approved).get("review_status"));
+        when(task.getTaskDefinitionKey()).thenReturn("DirectorReview");assertEquals("approved",service.describe(instance,List.of(task),approved).get("review_status"));
+        assertEquals("production",service.describe(instance,List.of(task),approved).get("current_stage"));
+        assertEquals("card",StudentStageService.studentStage("StudentDraft",true));assertEquals("draft",StudentStageService.studentStage("StudentDraft",false));
+        assertEquals("final",StudentStageService.phase("ScriptReview",false));
+        when(instance.getProcessVariables()).thenReturn(Map.of(cn.iocoder.yudao.module.bpm.framework.flowable.core.enums.BpmnVariableConstants.PROCESS_INSTANCE_VARIABLE_STATUS,4));
+        assertEquals("creative",service.describe(instance,List.of(),List.of()).get("current_stage"));
+        assertEquals("script",service.describe(instance,List.of(),approved).get("current_stage"));
+        assertEquals("cancelled",service.describe(instance,List.of(),approved).get("review_status"));
+    }
 }

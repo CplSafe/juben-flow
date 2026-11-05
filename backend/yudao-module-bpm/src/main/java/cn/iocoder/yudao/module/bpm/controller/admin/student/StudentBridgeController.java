@@ -55,6 +55,14 @@ public class StudentBridgeController {
         service.authenticate("/bpm/student-bridge/stage-submit",body,timestamp,nonce,signature);
         return success(stages.submit(stages.parse(body)));
     }
+    @PostMapping("/summaries") @PermitAll
+    @Operation(summary="受信后端批量查询本人申请阶段状态，最多100条")
+    public CommonResult<Map<String,Object>> summaries(@RequestBody String body,
+            @RequestHeader("X-Bridge-Timestamp") String timestamp,@RequestHeader("X-Bridge-Nonce") String nonce,
+            @RequestHeader("X-Bridge-Signature") String signature) {
+        service.authenticate("/bpm/student-bridge/summaries",body,timestamp,nonce,signature);
+        return success(stages.summaries(stages.parseSummaries(body)));
+    }
     @GetMapping("/application-detail") @PreAuthorize("@ss.hasPermission('bpm:student-application:query')")
     @Operation(summary="申请、历次提交版本及审批记录")
     public CommonResult<Map<String,Object>> detail(@RequestParam long id) { return success(stages.adminDetail(id)); }

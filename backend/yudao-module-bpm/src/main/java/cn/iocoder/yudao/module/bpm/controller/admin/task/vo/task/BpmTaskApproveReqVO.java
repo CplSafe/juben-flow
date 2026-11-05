@@ -18,6 +18,9 @@ public class BpmTaskApproveReqVO {
     @Schema(description = "审批意见", example = "不错不错！")
     private String reason;
 
+    @Schema(description = "新版学生一卡审核通过评级，仅允许A或S")
+    private String cardGrade;
+
     @Schema(description = "签名", example = "https://www.iocoder.cn/sign.png")
     private String signPicUrl;
 

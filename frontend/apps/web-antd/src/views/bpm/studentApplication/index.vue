@@ -12,7 +12,7 @@ interface Row {
 }
 interface Version { data?: Record<string,unknown>; version: number; stage: string; content: string; task_id: string; submitted_at: number }
 interface Review { task_id: string; name: string; status: number; reason?: string; version: number; finished_at: number }
-interface Workflow { current_stage: string; review_status: string; stage_statuses?: Record<string,string>; status: number; stage: string; versions: Version[]; reviews: Review[]; withdrawals?: Array<{task_id:string;stage:string;version:number;reason:string;withdrawn_at:number}> }
+interface Workflow { flow_version?:number; card_grade?:string; production_assignment?:{producer_name?:string;director_name?:string}; current_stage: string; review_status: string; stage_statuses?: Record<string,string>; status: number; stage: string; versions: Version[]; reviews: Review[]; withdrawals?: Array<{task_id:string;stage:string;version:number;reason:string;withdrawn_at:number}> }
 defineOptions({ name: 'BpmStudentApplications' });
 const stageNames: Record<string, string> = { card:'一卡', script:'剧本', final:'完善剧本', production:'后续制作', creative: '创意', draft: '一卡初稿', revision: '完善剧本', waiting_review: '等待后台审核', finished: '流程已结束' };
 const statusNames: Record<string,string> = { withdrawn:'已撤回', under_review:'审核中', needs_changes:'需修改', approved:'已通过', awaiting_submission:'待填写', rejected:'未通过', cancelled:'已取消', not_started:'未开始', not_applicable:'旧流程无此阶段' };
@@ -35,6 +35,7 @@ const columns = [
  { title: '申请编号', dataIndex: 'application_id', width: 140 },
  { title: '操作', key: 'action', width: 160 },
 ];
+function stageLabel(stage:string){return stage==='script'&&workflow.value?.flow_version===5?'完善一卡剧本':stageNames[stage]||stage;}
 async function load() {
  loading.value = true; failure.value = false;
  try { rows.value = await requestClient.get<Row[]>('/bpm/student-bridge/applications', { params: { offset: offset.value } }); }
@@ -81,12 +82,13 @@ onMounted(load);
      <template #action><Button size="small" @click="selectDetail(detail.id)">重试</Button></template>
     </Alert>
     <template v-if="workflow">
+     <p v-if="workflow.card_grade" class="mt-3">一卡评级：{{workflow.card_grade}}</p><p v-if="workflow.production_assignment?.producer_name">制剧人：{{workflow.production_assignment.producer_name}} · 分配人：{{workflow.production_assignment.director_name}}</p>
      <Tag class="mt-4">{{ stageNames[workflow.current_stage] || stageNames[workflow.stage] || workflow.stage }}</Tag>
      <Tag v-if="workflow.review_status">{{ statusNames[workflow.review_status] || workflow.review_status }}</Tag>
      <div v-if="workflow.stage_statuses" class="mt-3"><Tag v-for="(status, stage) in workflow.stage_statuses" :key="stage">{{ stageNames[stage] || stage }}：{{ statusNames[status] || status }}</Tag></div>
      <h3 class="mb-3 mt-6 font-medium">历次提交版本</h3>
      <Collapse :default-active-key="workflow.versions.slice(-1).map((version) => version.version)">
-      <CollapsePanel v-for="version in workflow.versions" :key="version.version" :header="`v${version.version} · ${stageNames[version.stage] || version.stage} · ${new Date(version.submitted_at).toLocaleString('zh-CN')}`">
+      <CollapsePanel v-for="version in workflow.versions" :key="version.version" :header="`v${version.version} · ${stageLabel(version.stage)} · ${new Date(version.submitted_at).toLocaleString('zh-CN')}`">
        <ScriptFields v-if="version.data" :data="version.data" :application-id="detail.id"/><p v-else class="whitespace-pre-wrap break-words">{{ version.content }}</p>
       </CollapsePanel>
      </Collapse>

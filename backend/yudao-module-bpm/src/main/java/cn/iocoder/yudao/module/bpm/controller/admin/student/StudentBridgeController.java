@@ -19,6 +19,7 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 @Tag(name="管理后台 - 学生与创意申请")
 public class StudentBridgeController {
     @Resource private StudentBridgeService service;
+    @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentProductionService production;
     @Resource private StudentStageService stages;
     @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentDocumentService documents;
     @ModelAttribute
@@ -98,4 +99,16 @@ public class StudentBridgeController {
     @GetMapping("/applications") @PreAuthorize("@ss.hasPermission('bpm:student-application:query')")
     @Operation(summary="创意申请及关联流程列表（每页50条）")
     public CommonResult<List<Map<String,Object>>> applications(@RequestParam(defaultValue="0") int offset) { return success(service.applications(offset)); }
+    @GetMapping("/student-scripts") @PreAuthorize("@ss.hasPermission('bpm:student:query')")
+    @Operation(summary="学生名下剧本、评级及制剧人分配，每页50条")
+    public CommonResult<List<Map<String,Object>>> scripts(@RequestParam long studentId,@RequestParam(defaultValue="0") int offset) {return success(production.studentScripts(studentId,offset));}
+    @GetMapping("/producers") @PreAuthorize("@ss.hasPermission('bpm:student:assign')")
+    @Operation(summary="可分配的启用后台工作人员，不包含学生账号")
+    public CommonResult<List<Map<String,Object>>> producers() {return success(production.producers());}
+    @PutMapping("/production-assignment") @PreAuthorize("@ss.hasPermission('bpm:student:assign')")
+    @Operation(summary="方导分配已通过剧本的制剧人，按revision防止并发覆盖，不发起新流程")
+    public CommonResult<Map<String,Object>> assign(@RequestBody cn.iocoder.yudao.module.bpm.service.student.StudentProductionService.AssignmentRequest request) {return success(production.assign(cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId(),request));}
+    @GetMapping("/production-assignment-history") @PreAuthorize("@ss.hasPermission('bpm:student-application:query')")
+    @Operation(summary="剧本制剧人分配变更记录")
+    public CommonResult<List<Map<String,Object>>> assignmentHistory(@RequestParam long applicationId) {return success(production.assignmentHistory(applicationId));}
 }

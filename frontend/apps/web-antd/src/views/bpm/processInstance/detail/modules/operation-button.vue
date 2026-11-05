@@ -136,7 +136,9 @@ const nextAssigneesActivityNode = ref<BpmProcessInstanceApi.ApprovalNodeInfo[]>(
 const nextAssigneesTimelineRef = ref(); // 下一个节点审批人时间线组件的引用
 let nextApprovalRequestId = 0; // 请求序号；onChange 高频触发时，丢弃过期请求结果
 let pendingNextNodesTask: null | Promise<unknown> = null; // 跟踪 onChange 触发的最新一轮重算，提交前需 await 等其完成
+const requiresCardGrade = computed(() => String(props.processInstance?.businessKey || "").startsWith("zhenzhihui:student:") && runningTask.value?.taskDefinitionKey === "GradedCardReview");
 const approveReasonForm: any = reactive({
+  cardGrade: undefined,
   reason: '',
   signPicUrl: '',
   nextAssignees: {},
@@ -443,6 +445,7 @@ async function handleAudit(pass: boolean, formRef: FormInstance | undefined) {
       // 审批通过数据
       const data = {
         id: runningTask.value.id,
+        cardGrade: requiresCardGrade.value ? approveReasonForm.cardGrade : undefined,
         reason: approveReasonForm.reason,
         attachments: approveReasonForm.attachments,
         variables, // 审批通过, 把修改的字段值赋于流程实例变量
@@ -751,6 +754,7 @@ function getButtonDisplayName(btnType: BpmTaskOperationButtonTypeEnum) {
 function loadTodoTask(task: any) {
   approveForm.value = {};
   runningTask.value = task;
+  approveReasonForm.cardGrade = undefined;
   approveFormFApi.value = {};
   // 切换任务时重置请求序号与 pending 重算，避免旧任务飞行中的请求/Promise 串到新任务
   nextApprovalRequestId += 1;
@@ -938,6 +942,9 @@ defineExpose({ loadTodoTask });
                     :src="approveReasonForm.signPicUrl"
                   />
                 </div>
+              </FormItem>
+              <FormItem v-if="requiresCardGrade" label="一卡评级" name="cardGrade" :rules="[{ required: true, message: '通过前请选择 A 或 S' }]">
+                <Select v-model:value="approveReasonForm.cardGrade" placeholder="请选择 A 或 S" :options="[{label:'A',value:'A'},{label:'S',value:'S'}]" />
               </FormItem>
               <FormItem :label="`${nodeTypeName}意见`" name="reason">
                 <Textarea

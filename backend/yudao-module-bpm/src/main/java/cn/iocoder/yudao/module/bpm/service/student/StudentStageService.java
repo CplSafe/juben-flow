@@ -24,6 +24,7 @@ import static cn.iocoder.yudao.module.bpm.framework.flowable.core.enums.BpmnVari
 @Service
 public class StudentStageService {
     @Resource private JdbcTemplate jdbc;
+    @Resource private StudentProductionService production;
     @Resource private ObjectMapper mapper;
     @Resource private TaskService taskService;
     @Resource private HistoryService historyService;
@@ -34,7 +35,7 @@ public class StudentStageService {
     @Resource private AdminUserService users;
     private static final Map<String,String> TASK_KEYS = Map.of("creative","StartUserNode","card","StudentDraft","script","StudentScript","final","StudentRevision","draft","StudentDraft","revision","StudentRevision");
     private static boolean contentReview(String key) {return key!=null && REVIEW_KEYS.contains(key);}
-    private static final Set<String> REVIEW_KEYS = Set.of("CreativeReview","OutlineReview","ScriptReview","FinalReview");
+    private static final Set<String> REVIEW_KEYS = Set.of("CreativeReview","OutlineReview","ScriptReview","FinalReview","GradedCardReview","CardRefinementReview");
 
     public record Submission(String externalUserId, String applicationId, String requestKey,
                              String taskId, String stage, String content,
@@ -107,7 +108,9 @@ public class StudentStageService {
         String structuredJson=null;
         if (r.data()!=null && !r.data().isNull()) {
             var data=r.data().deepCopy();
-            if ("final".equals(r.stage())) ((com.fasterxml.jackson.databind.node.ObjectNode)data).put("originality_confirmed_at",java.time.Instant.now().toString());
+            if ("final".equals(r.stage()) || "script".equals(r.stage()) && StudentProductionService.gradedModel(repositoryService.getBpmnModel(task.getProcessDefinitionId()))) {
+                if(!data.path("originality_confirmed").asBoolean() || !"originality-2026-11-05".equals(data.path("originality_version").asText()) || data.has("originality_confirmed_at")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"请重新确认原创声明");
+                ((com.fasterxml.jackson.databind.node.ObjectNode)data).put("originality_confirmed_at",java.time.Instant.now().toString());}
             structuredJson=data.toString();
         }
         jdbc.update("INSERT INTO bpm_external_submission(application_ref,version,stage,task_id,request_key,payload_hash,content,data_json) VALUES(?,?,?,?,?,?,?,?)",
@@ -183,6 +186,7 @@ public class StudentStageService {
             review.put("status",status);review.put("reason",task.getTaskLocalVariables().get(TASK_VARIABLE_REASON));review.put("version",number);review.put("finished_at",task.getEndTime().getTime());reviews.add(review);
         }
         result.put("versions",snapshots);result.put("reviews",reviews);
+        result.putAll(production.metadata(((Number)app.get("id")).longValue()));
         result.put("structured",snapshots.stream().anyMatch(v->v.get("data")!=null));
         var actions=jdbc.queryForList("SELECT task_id,stage,version,reason,CAST(UNIX_TIMESTAMP(created_at)*1000 AS UNSIGNED) AS withdrawn_at FROM bpm_external_withdrawal WHERE application_ref=? ORDER BY id",app.get("id"));
         result.put("withdrawals",actions);
@@ -199,7 +203,7 @@ public class StudentStageService {
             var v=snapshots.get(i);
             if(stage.equals(v.get("stage")) && v.get("data") instanceof Map<?,?> raw) {
                 Map<String,Object> out=new HashMap<>();raw.forEach((k,val)->out.put(k.toString(),val));
-                if("final".equals(stage)){out.remove("originality_confirmed");out.remove("originality_confirmed_at");out.remove("originality_version");}
+                if("final".equals(stage)||"script".equals(stage)){out.remove("originality_confirmed");out.remove("originality_confirmed_at");out.remove("originality_version");}
                 return out;
             }
         }
@@ -215,7 +219,7 @@ public class StudentStageService {
 
     private boolean fourStages(String definition) {
         var model=repositoryService.getBpmnModel(definition);
-        return model!=null && model.getMainProcess().getFlowElement("FinalReview",true)!=null;
+        return model!=null && (model.getMainProcess().getFlowElement("FinalReview",true)!=null || StudentProductionService.gradedModel(model));
     }
 
     static String studentStage(String key, boolean four) {
@@ -226,11 +230,12 @@ public class StudentStageService {
     static String phase(String key, boolean four) {
         if(key==null)return "production";
         return switch(key) { case "StartUserNode","CreativeReview" -> "creative";
-            case "StudentDraft","OutlineReview" -> "card"; case "StudentScript" -> "script";
+            case "StudentDraft","OutlineReview","GradedCardReview" -> "card"; case "StudentScript","CardRefinementReview" -> "script";
             case "ScriptReview" -> four?"script":"final"; case "StudentRevision","FinalReview" -> "final"; default -> "production"; };
     }
     Map<String,Object> describe(org.flowable.engine.history.HistoricProcessInstance instance, List<Task> tasks, List<Map<String,Object>> reviews) {
         boolean four=fourStages(instance.getProcessDefinitionId());
+        boolean graded=StudentProductionService.gradedModel(repositoryService.getBpmnModel(instance.getProcessDefinitionId()));
         int status=((Number)instance.getProcessVariables().get(PROCESS_INSTANCE_VARIABLE_STATUS)).intValue();
         String current="production", state="approved";
         for (Task task:tasks) {
@@ -252,16 +257,18 @@ public class StudentStageService {
             if (!reviews.isEmpty()) {
                 var last=reviews.get(reviews.size()-1);String key=(String)last.get("node_key");current=phase(key,four);
                 if (((Number)last.get("status")).intValue()==2) current=switch(key) {
-                    case "CreativeReview" -> "card"; case "OutlineReview" -> four?"script":"final";
+                    case "CreativeReview" -> "card"; case "GradedCardReview","CardRefinementReview" -> "script"; case "OutlineReview" -> four?"script":"final";
                     case "ScriptReview" -> four?"final":"production"; default -> "production";
                 };
             }
         }
+        if(graded && instance.getEndTime()!=null && status==2){current="script";state="approved";}
         Map<String,String> stages=new LinkedHashMap<>();
         List<String> order=List.of("creative","card","script","final","production");
         for (String p:order.subList(0,4)) stages.put(p,order.indexOf(p)<order.indexOf(current)?"approved":p.equals(current)?state:"not_started");
         if (!four) stages.put("script","not_applicable");
-        Map<String,Object> description=new HashMap<>(Map.of("current_stage",current,"review_status",state,"stage_statuses",stages,"flow_version",four?4:3));
+        if(graded)stages.put("final","not_applicable");
+        Map<String,Object> description=new HashMap<>(Map.of("current_stage",current,"review_status",state,"stage_statuses",stages,"flow_version",graded?5:four?4:3));
         Object title=instance.getProcessVariables().get("studentTitle"),genre=instance.getProcessVariables().get("studentGenre");
         description.put("display_title",title instanceof String?title:"");description.put("display_genre",genre instanceof String?genre:"");return description;
     }
@@ -288,7 +295,7 @@ public class StudentStageService {
         var active=taskService.createTaskQuery().processInstanceId(pid).list();
         Task current=active.stream().filter(t->r.taskId().equals(t.getId())).findFirst().orElse(null);
         if(current==null || current.isSuspended() || !contentReview(current.getTaskDefinitionKey()) || active.stream().anyMatch(t->!current.getTaskDefinitionKey().equals(t.getTaskDefinitionKey()) || t.isSuspended()))throw new ResponseStatusException(HttpStatus.CONFLICT,"Review task changed");
-        String target=switch(current.getTaskDefinitionKey()){case "CreativeReview"->"StartUserNode";case "OutlineReview"->"StudentDraft";case "ScriptReview"->fourStages(current.getProcessDefinitionId())?"StudentScript":"StudentRevision";default->"StudentRevision";};
+        String target=switch(current.getTaskDefinitionKey()){case "CreativeReview"->"StartUserNode";case "OutlineReview","GradedCardReview"->"StudentDraft";case "CardRefinementReview"->"StudentScript";case "ScriptReview"->fourStages(current.getProcessDefinitionId())?"StudentScript":"StudentRevision";default->"StudentRevision";};
         int number=jdbc.queryForObject("SELECT COALESCE(MAX(version),1) FROM bpm_external_submission WHERE application_ref=?",Integer.class,app.get("id"));
         String stage=phase(current.getTaskDefinitionKey(),fourStages(current.getProcessDefinitionId()));
         jdbc.update("INSERT INTO bpm_external_withdrawal(application_ref,request_key,payload_hash,task_id,stage,version,reason) VALUES(?,?,?,?,?,?,?)",app.get("id"),r.requestKey(),hash,r.taskId(),stage,number,r.reason());
@@ -317,12 +324,13 @@ public class StudentStageService {
     public Map<String,Object> summaries(SummaryRequest r) {
         String placeholders=String.join(",",Collections.nCopies(r.applicationIds().size(),"?"));
         List<Object> args=new ArrayList<>();args.add(r.externalUserId());args.addAll(r.applicationIds());
-        var apps=jdbc.queryForList("SELECT a.application_id,a.process_id FROM bpm_external_application a JOIN bpm_external_student s ON s.source=a.source AND s.user_id=a.user_id WHERE a.source='zhenzhihui' AND s.external_user_id=? AND a.application_id IN ("+placeholders+")",args.toArray());
+        var apps=jdbc.queryForList("SELECT a.id,a.application_id,a.process_id FROM bpm_external_application a JOIN bpm_external_student s ON s.source=a.source AND s.user_id=a.user_id WHERE a.source='zhenzhihui' AND s.external_user_id=? AND a.application_id IN ("+placeholders+")",args.toArray());
         if (apps.size()!=r.applicationIds().size()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         Set<String> ids=new HashSet<>();for(var a:apps) ids.add((String)a.get("process_id"));
         var instances=historyService.createHistoricProcessInstanceQuery().processInstanceIds(ids).includeProcessVariables().list();
         var active=taskService.createTaskQuery().processInstanceIdIn(ids).list();
         var history=historyService.createHistoricTaskInstanceQuery().processInstanceIdIn(ids).finished().includeTaskLocalVariables().orderByHistoricTaskInstanceEndTime().asc().list();
+        Map<Long,String> grades=production.currentGrades(apps.stream().map(a->((Number)a.get("id")).longValue()).toList());
         Map<String,Object> out=new HashMap<>();
         for(var app:apps) {
             String pid=(String)app.get("process_id");
@@ -334,6 +342,7 @@ public class StudentStageService {
                     reviews.add(Map.of("node_key",t.getTaskDefinitionKey(),"status",status));
             }
             var summary=new HashMap<>(describe(instance,active.stream().filter(t->pid.equals(t.getProcessInstanceId())).toList(),reviews));
+            summary.put("card_grade",grades.getOrDefault(((Number)app.get("id")).longValue(),""));
             summary.put("workflow_status",instance.getProcessVariables().get(PROCESS_INSTANCE_VARIABLE_STATUS));
             out.put((String)app.get("application_id"),summary);
         }

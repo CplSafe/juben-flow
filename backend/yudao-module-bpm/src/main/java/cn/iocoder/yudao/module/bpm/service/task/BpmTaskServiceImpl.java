@@ -84,6 +84,8 @@ import static cn.iocoder.yudao.module.bpm.framework.flowable.core.util.BpmnModel
 @Service
 public class BpmTaskServiceImpl implements BpmTaskService {
 
+    @Resource private cn.iocoder.yudao.module.bpm.service.student.StudentProductionService studentProduction;
+
     @Resource
     private TaskService taskService;
     @Resource
@@ -620,6 +622,8 @@ public class BpmTaskServiceImpl implements BpmTaskService {
         if (reasonRequire && StrUtil.isEmpty(reqVO.getReason())) {
             throw exception(TASK_REASON_REQUIRE);
         }
+
+        studentProduction.beforeContentApproval(userId, task, instance, bpmnModel, reqVO.getCardGrade());
 
         // 情况一：被委派的任务，不调用 complete 去完成任务
         if (DelegationState.PENDING.equals(task.getDelegationState())) {

@@ -116,4 +116,13 @@ class StudentStageServiceTest {
         when(jdbc.queryForObject(contains("COUNT(*) FROM bpm_external_submission"),eq(Integer.class),eq(31L))).thenReturn(1);
         assertThrows(ResponseStatusException.class,()->service.submit(request));verifyNoInteractions(bpm);
     }
+
+    @Test void gradedCardFlowHasNoFinalOrProductionStageAndReviewIsNeverStudentEditable() {
+        var repo=mock(org.flowable.engine.RepositoryService.class);ReflectionTestUtils.setField(service,"repositoryService",repo);
+        var model=new org.flowable.bpmn.model.BpmnModel();var process=new org.flowable.bpmn.model.Process();model.addProcess(process);var node=new org.flowable.bpmn.model.UserTask();node.setId("GradedCardReview");process.addFlowElement(node);when(repo.getBpmnModel("graded")).thenReturn(model);
+        var instance=mock(org.flowable.engine.history.HistoricProcessInstance.class);when(instance.getProcessDefinitionId()).thenReturn("graded");when(instance.getProcessVariables()).thenReturn(Map.of("PROCESS_STATUS",1));
+        when(task.getTaskDefinitionKey()).thenReturn("GradedCardReview");assertEquals("under_review",service.describe(instance,List.of(task),List.of()).get("review_status"));
+        when(task.getTaskDefinitionKey()).thenReturn("CardRefinementReview");var review=service.describe(instance,List.of(task),List.of());assertEquals("under_review",review.get("review_status"));assertEquals("script",review.get("current_stage"));assertNull(StudentStageService.studentStage("CardRefinementReview",true));
+        when(instance.getEndTime()).thenReturn(new Date());when(instance.getProcessVariables()).thenReturn(Map.of("PROCESS_STATUS",2));var ended=service.describe(instance,List.of(),List.of());assertEquals(5,ended.get("flow_version"));assertEquals("script",ended.get("current_stage"));assertEquals("approved",ended.get("review_status"));assertEquals("not_applicable",((Map<?,?>)ended.get("stage_statuses")).get("final"));
+    }
 }

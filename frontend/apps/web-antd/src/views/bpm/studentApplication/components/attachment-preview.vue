@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { Alert, Button, Modal, Select, Spin, message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
@@ -20,6 +20,7 @@ const props = defineProps<{
   stageLabel: string;
 }>();
 const visible = ref(false);
+const fullscreen = ref(false);
 const selected = ref<number>();
 const busy = ref(false);
 const error = ref('');
@@ -46,7 +47,16 @@ function dispose() {
   void pdf.value?.loadingTask.destroy();
   pdf.value = undefined;
 }
+function exitOnEscape(event: KeyboardEvent) {
+  if (visible.value && fullscreen.value && event.key === 'Escape') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    fullscreen.value = false;
+  }
+}
+onMounted(() => document.addEventListener('keydown', exitOnEscape, true));
 function close() {
+  fullscreen.value = false;
   visible.value = false;
   ++generation;
   dispose();
@@ -137,6 +147,7 @@ async function download() {
   }
 }
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', exitOnEscape, true);
   ++generation;
   dispose();
 });
@@ -146,9 +157,17 @@ defineExpose({ open });
   <Modal
     :open="visible"
     :footer="null"
-    :width="'min(1440px, 98vw)'"
-    :style="{ top: '2vh' }"
-    wrap-class-name="script-preview-modal"
+    :width="fullscreen ? '100vw' : 'min(1440px, 98vw)'"
+    :style="{
+      top: fullscreen ? 0 : '2vh',
+      paddingBottom: fullscreen ? 0 : undefined,
+    }"
+    :wrap-class-name="
+      fullscreen
+        ? 'script-preview-modal script-preview-fullscreen'
+        : 'script-preview-modal'
+    "
+    :keyboard="!fullscreen"
     :destroy-on-close="true"
     @cancel="close"
   >
@@ -157,7 +176,7 @@ defineExpose({ open });
         <IconifyIcon icon="lucide:book-open-text" /><span>{{ stageLabel }} · 附件阅读</span>
       </div></template
     >
-    <div class="preview-shell">
+    <div :class="['preview-shell', { 'is-fullscreen': fullscreen }]">
       <aside class="preview-library">
         <div class="library-label">
           本次提交 <span>{{ files.length }} 份附件</span>
@@ -194,6 +213,13 @@ defineExpose({ open });
                   { label: '200%', value: 2 },
                 ]"
                 class="zoom-select" /></template
+            ><Button
+              size="small"
+              :aria-pressed="fullscreen"
+              @click="fullscreen = !fullscreen"
+              ><IconifyIcon
+                :icon="fullscreen ? 'lucide:minimize' : 'lucide:maximize'"
+              />{{ fullscreen ? '退出全屏' : '全屏阅读' }}</Button
             ><Button size="small" :loading="downloading" @click="download"
               ><IconifyIcon icon="lucide:download" />原文件</Button
             >
@@ -251,7 +277,13 @@ defineExpose({ open });
   border-radius: 8px;
   overflow: hidden;
 }
-.preview-library {
+.preview-shell.is-fullscreen {
+  height: calc(100dvh - 64px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  border-radius: 0;
+}
+.is-fullscreen .preview-library {
   background: hsl(var(--muted) / 0.35);
   border-right: 1px solid hsl(var(--border));
   padding: 18px 10px;

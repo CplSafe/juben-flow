@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
 import { Alert, Button, Modal, Select, Spin, message } from 'ant-design-vue';
 import { IconifyIcon } from '@vben/icons';
 import { requestClient } from '#/api/request';
+import PdfContinuous from './pdf-continuous.vue';
 import { downloadScriptFile } from './download';
 import { fileKind, formatFileSize, readableMarkdown, type ScriptAttachment } from './reader';
 import {
@@ -10,7 +11,6 @@ import {
   GlobalWorkerOptions,
   version as pdfVersion,
   type PDFDocumentProxy,
-  type RenderTask,
 } from 'pdfjs-dist';
 const pdfAssets = `${import.meta.env.BASE_URL}pdfjs/${pdfVersion}/`;
 GlobalWorkerOptions.workerSrc = `${pdfAssets}pdf.worker.min.js`;
@@ -28,29 +28,23 @@ const textReady = ref(false);
 const page = ref(1);
 const pages = ref(0);
 const zoom = ref(1);
-const canvas = ref<HTMLCanvasElement>();
+const pdf = shallowRef<PDFDocumentProxy>();
 const paper = ref<HTMLElement>();
 const downloading = ref(false);
 const current = computed(() => props.files.find((f) => f.file_id === selected.value));
 const html = computed(() =>
   current.value && fileKind(current.value) === 'md' ? readableMarkdown(text.value) : '',
 );
-let drawGeneration = 0;
 let generation = 0;
-let doc: PDFDocumentProxy | undefined;
-let render: RenderTask | undefined;
 let controller: AbortController | undefined;
 let pending: ReturnType<typeof getDocument> | undefined;
 function dispose() {
-  ++drawGeneration;
   controller?.abort();
   controller = undefined;
-  render?.cancel();
-  render = undefined;
   void pending?.destroy();
   pending = undefined;
-  void doc?.loadingTask.destroy();
-  doc = undefined;
+  void pdf.value?.loadingTask.destroy();
+  pdf.value = undefined;
 }
 function close() {
   visible.value = false;
@@ -58,36 +52,6 @@ function close() {
   dispose();
   text.value = '';
   pages.value = 0;
-}
-async function draw() {
-  if (!doc || !canvas.value) return;
-  const sequence = ++drawGeneration;
-  const previous = render;
-  previous?.cancel();
-  if (previous) await previous.promise.catch(() => {});
-  const active = doc;
-  const index = page.value;
-  const node = canvas.value;
-  try {
-    const pdfPage = await active.getPage(index);
-    if (doc !== active || page.value !== index || sequence !== drawGeneration) return;
-    const original = pdfPage.getViewport({ scale: 1 });
-    const available = Math.max(280, (paper.value?.clientWidth || 900) - 80);
-    const scale = Math.min(
-      (available / original.width) * zoom.value,
-      Math.sqrt(8_000_000 / (original.width * original.height)),
-    );
-    const viewport = pdfPage.getViewport({ scale });
-    node.width = Math.ceil(viewport.width);
-    node.height = Math.ceil(viewport.height);
-    const task = pdfPage.render({ canvas: node, viewport });
-    render = task;
-    await task.promise;
-  } catch (e) {
-    if (e instanceof Error && e.name !== 'RenderingCancelledException' && doc === active) {
-      error.value = '此页暂时无法显示，请重试或下载原文件';
-    }
-  }
 }
 async function load() {
   const file = current.value;
@@ -141,7 +105,7 @@ async function load() {
         void loaded.loadingTask.destroy();
         return;
       }
-      doc = loaded;
+      pdf.value = loaded;
       pending = undefined;
       pages.value = loaded.numPages;
     }
@@ -152,7 +116,7 @@ async function load() {
     if (id === generation) {
       busy.value = false;
       await nextTick();
-      await draw();
+      if (paper.value) paper.value.scrollTop = 0;
     }
   }
 }
@@ -172,9 +136,6 @@ async function download() {
     downloading.value = false;
   }
 }
-watch([page, zoom], () => {
-  void draw();
-});
 onBeforeUnmount(() => {
   ++generation;
   dispose();
@@ -222,11 +183,7 @@ defineExpose({ open });
           <div class="reader-filename">{{ current?.file_name }}</div>
           <div class="reader-actions">
             <template v-if="pages"
-              ><Button size="small" aria-label="上一页" :disabled="page <= 1" @click="page--"
-                ><IconifyIcon icon="lucide:chevron-left" /></Button
               ><span class="page-counter">{{ page }} / {{ pages }}</span
-              ><Button size="small" aria-label="下一页" :disabled="page >= pages" @click="page++"
-                ><IconifyIcon icon="lucide:chevron-right" /></Button
               ><Select
                 v-model:value="zoom"
                 size="small"
@@ -262,9 +219,13 @@ defineExpose({ open });
             <div v-if="fileKind(current!) === 'md'" class="document-content" v-html="html" />
             <div v-else class="document-content plain-document">{{ text }}</div>
           </article>
-          <div v-else-if="pages" class="pdf-page">
-            <canvas ref="canvas" :aria-label="`文档第 ${page} 页`" />
-          </div>
+          <PdfContinuous
+            v-else-if="pdf && paper"
+            :document="pdf"
+            :surface="paper"
+            :zoom="zoom"
+            @page="page = $event"
+          />
         </div>
         <footer class="reader-footer">
           <span>仅供审核阅读 · 原始附件保持不变</span
@@ -396,8 +357,7 @@ defineExpose({ open });
   background: hsl(var(--muted) / 0.6);
   padding: 32px;
 }
-.document-paper,
-.pdf-page {
+.document-paper {
   background: #fff;
   color: #242831;
   margin: 0 auto;
@@ -526,9 +486,6 @@ defineExpose({ open });
   border-top: 1px solid hsl(var(--border));
   font-size: 10px;
   color: hsl(var(--muted-foreground));
-}
-.pdf-page canvas {
-  display: block;
 }
 @media (max-width: 850px) {
   .preview-shell {

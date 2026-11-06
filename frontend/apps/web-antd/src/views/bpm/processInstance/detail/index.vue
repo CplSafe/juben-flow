@@ -2,7 +2,7 @@
 import type { BpmProcessInstanceApi } from '#/api/bpm/processInstance';
 import type { SystemUserApi } from '#/api/system/user';
 
-import { nextTick, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import {
@@ -51,6 +51,7 @@ const props = defineProps<{
 
 const processInstanceLoading = ref(false); // 流程实例的加载中
 const processInstance = ref<BpmProcessInstanceApi.ProcessInstance>(); // 流程实例
+const isStudentProcess = computed(() => String(processInstance.value?.businessKey || '').startsWith('zhenzhihui:student:'));
 const processDefinition = ref<any>({}); // 流程定义
 const processModelView = ref<any>({}); // 流程模型视图
 const operationButtonRef = ref(); // 操作按钮组件 ref
@@ -307,9 +308,11 @@ onMounted(async () => {
             <TabPane tab="审批详情" key="form" class="pb-20 pr-3">
               <Row :gutter="[48, 24]">
                 <Col :xs="24" :sm="24" :md="18" :lg="18" :xl="16">
-                  <StudentSubmissions v-if="String(processInstance?.businessKey || '').startsWith('zhenzhihui:student:')" :process-id="props.id" />
-                  <!-- 流程表单 -->
+                  <StudentSubmissions v-if="isStudentProcess" :process-id="props.id" />
+                  <!-- Keep the engine form mounted for existing approval validation/variables.
+                       Student content is shown above from immutable submissions. -->
                   <div
+                    v-show="!isStudentProcess"
                     v-if="
                       processDefinition?.formType === BpmModelFormType.NORMAL
                     "

@@ -73,7 +73,7 @@ public class StudentBridgeService {
             if (r.externalUserId() == null || !r.externalUserId().matches("[1-9][0-9]{0,18}")
                     || r.applicationId() == null || !r.applicationId().matches("[1-9][0-9]{0,18}"))
                 throw new IllegalArgumentException();
-            if (submission && (!valid(r.name(), 80) || !valid(r.school(), 200) || !valid(r.creative(), 12000)
+            if (submission && (!valid(r.name(), 80) || !validSchool(r.school(), r.creator()) || !valid(r.creative(), 12000)
                     || r.phone() == null || !r.phone().matches("[+0-9() -]{7,25}")))
                 throw new IllegalArgumentException();
             if (r.title()!=null && r.title().codePointCount(0,r.title().length())>200) throw new IllegalArgumentException();
@@ -84,6 +84,13 @@ public class StudentBridgeService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid student application");
         }
     }
+    // Only authenticated bridge payloads with a graduate profile may omit school/company.
+    private static boolean validSchool(String school, com.fasterxml.jackson.databind.JsonNode profile) {
+        boolean graduated = profile != null && "graduated".equals(profile.path("student_status").asText());
+        return school != null && school.codePointCount(0, school.length()) <= 200
+                && (graduated || !school.isBlank());
+    }
+
     private static boolean valid(String s, int max) {
         return s != null && !s.isBlank() && s.codePointCount(0, s.length()) <= max;
     }
@@ -127,7 +134,7 @@ public class StudentBridgeService {
             var r=mapper.readValue(body,CreatorRequest.class);var p=r.profile();
             if (r.externalUserId()==null || !r.externalUserId().matches("[1-9][0-9]{0,18}") || r.revision()<1 || p==null || !p.isObject()
                     || body.getBytes(StandardCharsets.UTF_8).length>65536 || !valid(p.path("real_name").asText(),80)
-                    || !valid(p.path("school").asText(),200) || !p.path("phone").asText().matches("[+0-9() -]{7,25}")) throw new IllegalArgumentException();
+                    || !validSchool(p.path("school").asText(), p) || !p.path("phone").asText().matches("[+0-9() -]{7,25}")) throw new IllegalArgumentException();
             return r;
         } catch(Exception e) {throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid creator profile");}
     }

@@ -62,6 +62,23 @@ class StudentBridgeServiceTest {
         assertThrows(ResponseStatusException.class,()->service.parse("{\"externalUserId\":\"0\",\"applicationId\":\"1\"}",false));
         assertThrows(ResponseStatusException.class,()->service.parse("{\"externalUserId\":\"1\",\"applicationId\":\"1\"}",true));
     }
+    @Test void graduatesCanOmitSchoolButStudentsCannot() throws Exception {
+        var mapper = new ObjectMapper();
+        for (String status : List.of("student", "graduated")) {
+            var profile = mapper.readTree("{\"real_name\":\"Creator\",\"phone\":\"13800000000\",\"school\":\"\",\"student_status\":\"" + status + "\",\"creator_type\":\"team\"}");
+            String application = mapper.writeValueAsString(new StudentBridgeService.Request("7", "9", "Creator", "13800000000", "", "idea", "Title", null, profile));
+            String creator = mapper.writeValueAsString(new StudentBridgeService.CreatorRequest("7", 1, profile));
+            if (status.equals("graduated")) {
+                assertEquals("", service.parse(application, true).school());
+                assertEquals("team", service.parseCreator(creator).profile().path("creator_type").asText());
+            } else {
+                assertThrows(ResponseStatusException.class, () -> service.parse(application, true));
+                assertThrows(ResponseStatusException.class, () -> service.parseCreator(creator));
+            }
+        }
+        String legacy = mapper.writeValueAsString(new StudentBridgeService.Request("7", "9", "Creator", "13800000000", "", "idea"));
+        assertThrows(ResponseStatusException.class, () -> service.parse(legacy, true));
+    }
     @Test void createsStudentAndUsesActualStudentAsInitiator() {
         when(jdbc.queryForObject(anyString(),eq(Integer.class),eq(123L))).thenReturn(1);
         Map<String,Object> student=new HashMap<>();student.put("id",1L);

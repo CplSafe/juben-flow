@@ -161,3 +161,11 @@ logicalPath为 `/bpm/student-bridge/submit` 或 `/bpm/student-bridge/progress`�
 - 原文件下载接口不变。Office 在线预览限 30 MiB，PDF 50 MiB，TXT/MD 5 MiB；超限可下载原文件。转换繁忙返回 429，失败可重试或下载；不持久化转换副本，不修改提交快照。
 - 转换器只在内部 Docker 网络可达，无公网端口，禁止文档访问外部资源。预览 Markdown 不执行 HTML、不自动加载远程图片。
 - 学生操作节点统一显示“学生完善剧本”，流转记录中的人员列为“操作人”。旧实例只映射显示名称，原始流程历史不被重写。
+
+### 创作者独立身份和地区字段（2026-11-09）
+
+业务后端的 `GET/PUT /api/v1/script-creators/me` 支持独立的 `student_status`（`student` / `graduated`）、`creator_type`（`creator` / `team` / `freelancer`）及分开存储的 `province`、`city`。工作流将这些字段保存在 `creator_json` 和每份申请的创作者快照中，不新增引擎账号权限。
+
+学校/机构规则：在校学校必填；已毕业机构可为空。签名桥接的 `/creator` 和 `/submit` 仅在所附创作者资料的 `student_status=graduated` 时允许空学校，长度上限仍为 200。旧的缺少状态的请求维持学校必填。业务后端从当前登录用户已保存的资料生成快照，浏览器不能通过申请请求冒充其他身份。
+
+两端需一起升级；无需改动既有 SIMPLE 流程或清空历史数据。先部署工作流兼容校验，再部署业务后端的新增列迁移和接口；省市历史自由文本的兼容规则见业务前端精简对接文档。

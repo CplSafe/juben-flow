@@ -23,6 +23,20 @@ class StudentStageServiceTest {
     StudentStageService service; JdbcTemplate jdbc; AdminUserService users; TaskService tasks;
     BpmTaskService bpm; Task task; TaskQuery query;
     StudentStageService.Submission request=new StudentStageService.Submission("7","9","submission-key","task-1","draft","初稿正文");
+    @Test void structuredAttachmentsAreOptionalButReferencesRemainValidated() throws Exception {
+        var mapper = new ObjectMapper();
+        for (String json : List.of("{}", "{\"attachments\":null}", "{\"attachments\":[]}", "{\"attachments\":[{\"file_id\":1}]}")) {
+            assertDoesNotThrow(() -> StudentStageService.validateStructuredSnapshot(mapper.readTree(json)));
+        }
+        for (String json : List.of("null", "[]", "{\"attachments\":{}}", "{\"attachments\":\"bad\"}", "{\"attachments\":[{\"file_id\":0}]}", "{\"attachments\":[{\"file_id\":1},{\"file_id\":1}]}")) {
+            assertThrows(ResponseStatusException.class, () -> StudentStageService.validateStructuredSnapshot(mapper.readTree(json)));
+        }
+        var data = mapper.createObjectNode();
+        var files = data.putArray("attachments");
+        for (int i = 1; i <= 31; i++) files.addObject().put("file_id", i);
+        assertThrows(ResponseStatusException.class, () -> StudentStageService.validateStructuredSnapshot(data));
+    }
+
     @BeforeEach void setup(){
         service=new StudentStageService();jdbc=mock(JdbcTemplate.class);users=mock(AdminUserService.class);tasks=mock(TaskService.class);bpm=mock(BpmTaskService.class);
         ReflectionTestUtils.setField(service,"jdbc",jdbc);ReflectionTestUtils.setField(service,"mapper",new ObjectMapper());ReflectionTestUtils.setField(service,"users",users);ReflectionTestUtils.setField(service,"taskService",tasks);ReflectionTestUtils.setField(service,"bpmTasks",bpm);

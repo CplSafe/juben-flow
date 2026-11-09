@@ -60,9 +60,12 @@ public class StudentStageService {
     }
 
     static void validateStructuredSnapshot(com.fasterxml.jackson.databind.JsonNode data) {
-        if(data==null||!data.isObject()||!data.path("attachments").isArray()||data.path("attachments").isEmpty()||data.path("attachments").size()>30)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Structured attachments required");
+        if(data==null||!data.isObject())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Structured data required");
+        var attachments=data.get("attachments");
+        if(attachments==null||attachments.isNull())return;
+        if(!attachments.isArray()||attachments.size()>30)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid attachments");
         Set<Long> ids=new HashSet<>();
-        for(var file:data.path("attachments")) if(!file.path("file_id").canConvertToLong() || file.path("file_id").asLong()<=0 || !ids.add(file.path("file_id").asLong()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid attachment references");
+        for(var file:attachments) if(!file.path("file_id").canConvertToLong() || file.path("file_id").asLong()<=0 || !ids.add(file.path("file_id").asLong()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid attachment references");
     }
 
     private Map<String,Object> owned(String external, String application, boolean lock) {

@@ -10,4 +10,13 @@ SET rm.deleted = 1
 WHERE r.code = 'screenwriting_member' AND rm.deleted = 0
   AND ((m.type = 2 AND m.component IN ('bpm/processInstance/index', 'bpm/processInstance/create/index'))
        OR m.permission = 'bpm:process-instance:create');
+-- The official permission response filters descendants whose parent is not granted.
+-- This shared read permission belongs to approval center, not the removed My Flow page.
+-- Preflight must confirm every role holding it also holds the approval-center parent.
+UPDATE system_menu query_menu
+JOIN system_menu my_menu ON my_menu.id = query_menu.parent_id AND my_menu.deleted = 0
+SET query_menu.parent_id = my_menu.parent_id
+WHERE query_menu.deleted = 0 AND query_menu.type = 3
+  AND query_menu.permission = 'bpm:process-instance:query'
+  AND my_menu.component = 'bpm/processInstance/index';
 COMMIT;

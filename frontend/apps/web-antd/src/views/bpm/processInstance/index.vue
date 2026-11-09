@@ -23,6 +23,8 @@ import { DictTag } from '#/components/dict-tag';
 import { $t } from '#/locales';
 import { router } from '#/router';
 
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
+
 import { useGridColumns, useGridFormSchema } from './data';
 
 defineOptions({ name: 'BpmProcessInstanceMy' });
@@ -123,6 +125,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<BpmProcessInstanceApi.ProcessInstance>,
 });
+useRefreshOnActivated(() => gridApi.query());
 </script>
 
 <template>

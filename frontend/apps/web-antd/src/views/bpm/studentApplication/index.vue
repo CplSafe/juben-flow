@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
 import { useRouter } from 'vue-router';
 import { Page } from '@vben/common-ui';
 import { Alert, Button, Collapse, CollapsePanel, Drawer, Space, Table, Tag } from 'ant-design-vue';
@@ -59,6 +60,7 @@ function openProcess(row: Row) {
  router.push({ name: 'BpmProcessInstanceDetail', query: { id: row.process_id } });
 }
 onMounted(load);
+useRefreshOnActivated(load);
 </script>
 <template>
  <Page title="创意申请">

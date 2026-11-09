@@ -8,6 +8,8 @@ import { ACTION_ICON, TableAction, useVbenVxeGrid } from '#/adapter/vxe-table';
 import { getTaskTodoPage } from '#/api/bpm/task';
 import { router } from '#/router';
 
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
+
 import { useGridColumns, useGridFormSchema } from './data';
 
 defineOptions({ name: 'BpmTodoTask' });
@@ -23,7 +25,7 @@ function handleAudit(row: BpmTaskApi.Task) {
   });
 }
 
-const [Grid] = useVbenVxeGrid({
+const [Grid, gridApi] = useVbenVxeGrid({
   formOptions: {
     schema: useGridFormSchema(),
   },
@@ -52,6 +54,7 @@ const [Grid] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<BpmTaskApi.Task>,
 });
+useRefreshOnActivated(() => gridApi.query());
 </script>
 
 <template>

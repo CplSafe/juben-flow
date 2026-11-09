@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
 
 import { Page } from '@vben/common-ui';
 import { Alert, Button, Drawer, Space, Table, Tag, message } from 'ant-design-vue';
@@ -46,6 +47,7 @@ async function changeStatus(id: number) {
  } finally { changing.value = undefined; }
 }
 onMounted(load);
+useRefreshOnActivated(load);
 </script>
 <template>
  <Page title="学生管理">

@@ -135,6 +135,15 @@ export const useAuthStore = defineStore('auth', () => {
     // 加载
     const authPermissionInfo: AuthPermissionInfo | null =
       await getAuthPermissionInfoApi();
+    // Review-only accounts must land on an allowed page after the create menu is removed.
+    if (
+      !authPermissionInfo.user.homePath &&
+      authPermissionInfo.permissions.includes('bpm:task:query') &&
+      !authPermissionInfo.permissions.includes('bpm:process-instance:create') &&
+      !authPermissionInfo.permissions.includes('*:*:*')
+    ) {
+      authPermissionInfo.user.homePath = '/bpm/task/todo';
+    }
     // userStore
     userStore.setUserInfo(authPermissionInfo.user);
     userStore.setUserRoles(authPermissionInfo.roles);

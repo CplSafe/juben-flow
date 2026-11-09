@@ -10,6 +10,8 @@ import { ACTION_ICON, TableAction, useVbenVxeGrid } from '#/adapter/vxe-table';
 import { getTaskDonePage, withdrawTask } from '#/api/bpm/task';
 import { router } from '#/router';
 
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
+
 import { useGridColumns, useGridFormSchema } from './data';
 
 defineOptions({ name: 'BpmDoneTask' });
@@ -69,6 +71,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<BpmTaskApi.Task>,
 });
+useRefreshOnActivated(() => gridApi.query());
 </script>
 
 <template>

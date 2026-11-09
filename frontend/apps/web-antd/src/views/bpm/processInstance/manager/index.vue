@@ -17,6 +17,8 @@ import {
 import { $t } from '#/locales';
 import { router } from '#/router';
 
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
+
 import { useGridColumns, useGridFormSchema } from './data';
 
 defineOptions({ name: 'BpmProcessInstanceManager' });
@@ -96,6 +98,7 @@ const [Grid, gridApi] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<BpmProcessInstanceApi.ProcessInstance>,
 });
+useRefreshOnActivated(() => gridApi.query());
 </script>
 
 <template>

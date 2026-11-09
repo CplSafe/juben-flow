@@ -9,6 +9,8 @@ import { getTaskManagerPage } from '#/api/bpm/task';
 import { router } from '#/router';
 import TaskEvidence from '#/views/bpm/processInstance/detail/modules/task-evidence.vue';
 
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
+
 import { useGridColumns, useGridFormSchema } from './data';
 
 defineOptions({ name: 'BpmManagerTask' });
@@ -23,7 +25,7 @@ function handleHistory(row: BpmTaskApi.Task) {
   });
 }
 
-const [Grid] = useVbenVxeGrid({
+const [Grid, gridApi] = useVbenVxeGrid({
   formOptions: {
     schema: useGridFormSchema(),
   },
@@ -52,6 +54,7 @@ const [Grid] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<BpmTaskApi.Task>,
 });
+useRefreshOnActivated(() => gridApi.query());
 </script>
 
 <template>

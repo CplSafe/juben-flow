@@ -9,6 +9,8 @@ import { getProcessInstanceCopyPage } from '#/api/bpm/processInstance';
 import { $t } from '#/locales';
 import { router } from '#/router';
 
+import { useRefreshOnActivated } from '#/composables/use-refresh-on-activated';
+
 import { useGridColumns, useGridFormSchema } from './data';
 
 defineOptions({ name: 'BpmCopyTask' });
@@ -25,7 +27,7 @@ function handleDetail(row: BpmProcessInstanceApi.ProcessInstanceCopyRespVO) {
   });
 }
 
-const [Grid] = useVbenVxeGrid({
+const [Grid, gridApi] = useVbenVxeGrid({
   formOptions: {
     schema: useGridFormSchema(),
   },
@@ -54,6 +56,7 @@ const [Grid] = useVbenVxeGrid({
     },
   } as VxeTableGridOptions<BpmProcessInstanceApi.ProcessInstanceCopyRespVO>,
 });
+useRefreshOnActivated(() => gridApi.query());
 </script>
 
 <template>

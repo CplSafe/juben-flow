@@ -135,8 +135,14 @@ function setupAccessGuard(router: Router) {
         ? userInfo?.homePath || preferences.app.defaultHomePath
         : to.fullPath)) as string;
 
+    // A saved login redirect may still point at the former default create page.
+    const destination = decodeURIComponent(redirectPath);
+    const landingPath =
+      destination === preferences.app.defaultHomePath
+        ? userInfo?.homePath || destination
+        : destination;
     return {
-      ...router.resolve(decodeURIComponent(redirectPath)),
+      ...router.resolve(landingPath),
       replace: true,
     };
   });

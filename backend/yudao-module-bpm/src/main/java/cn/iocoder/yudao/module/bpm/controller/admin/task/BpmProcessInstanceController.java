@@ -123,7 +123,7 @@ public class BpmProcessInstanceController {
 
     @PostMapping("/create")
     @Operation(summary = "新建流程实例")
-    @PreAuthorize("@ss.hasPermission('bpm:process-instance:query')")
+    @PreAuthorize("@ss.hasPermission('bpm:process-instance:create')")
     public CommonResult<String> createProcessInstance(@Valid @RequestBody BpmProcessInstanceCreateReqVO createReqVO) {
         return success(processInstanceService.createProcessInstance(getLoginUserId(), createReqVO));
     }

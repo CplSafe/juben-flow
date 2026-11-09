@@ -79,6 +79,27 @@ class StudentBridgeServiceTest {
         String legacy = mapper.writeValueAsString(new StudentBridgeService.Request("7", "9", "Creator", "13800000000", "", "idea"));
         assertThrows(ResponseStatusException.class, () -> service.parse(legacy, true));
     }
+    @Test void sameRevisionAcceptsLegacyDefaultsAndJsonKeyOrderButRejectsRealChanges() throws Exception {
+        var mapper = new ObjectMapper();
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(123L))).thenReturn(1);
+        String legacy = "{\"revision\":3,\"real_name\":\"Creator\",\"phone\":\"13800000000\",\"school\":\"School\",\"identity_type\":\"student\",\"grade_major\":\"Grade 2\"}";
+        var student = new HashMap<String, Object>(Map.of("id", 1L, "user_id", 222L, "creator_revision", 3L, "creator_json", legacy));
+        when(jdbc.queryForMap(contains("bpm_external_student"), anyString(), anyString())).thenReturn(student);
+        when(users.getUser(222L)).thenReturn(new AdminUserDO().setStatus(0));
+        var profile = mapper.readTree("{\"school\":\"School\",\"phone\":\"13800000000\",\"real_name\":\"Creator\",\"revision\":3,\"identity_type\":\"student\",\"grade_major\":\"Grade 2\",\"student_status\":\"student\",\"creator_type\":\"creator\",\"province\":\"\",\"updated_at\":\"new-time\",\"workflow_sync_state\":\"synced\"}");
+        assertEquals(3L, service.syncCreator(new StudentBridgeService.CreatorRequest("7", 3, profile)).get("revision"));
+        assertEquals(3L, service.syncCreator(new StudentBridgeService.CreatorRequest("7", 3, mapper.readTree(legacy))).get("revision"));
+        for (String field : List.of("phone", "creator_type", "province", "student_status")) {
+            var changed = profile.deepCopy();
+            ((com.fasterxml.jackson.databind.node.ObjectNode) changed).put(field, "different");
+            assertThrows(ResponseStatusException.class, () -> service.syncCreator(new StudentBridgeService.CreatorRequest("7", 3, changed)), field);
+        }
+        student.put("creator_json", "invalid-json");
+        assertThrows(ResponseStatusException.class, () -> service.syncCreator(new StudentBridgeService.CreatorRequest("7", 3, profile)));
+        verify(jdbc, never()).update(startsWith("UPDATE bpm_external_student SET creator_revision"), any(), any(), any(), any(), any(), any());
+        verify(users, never()).createExternalStudent(any());
+    }
+
     @Test void createsStudentAndUsesActualStudentAsInitiator() {
         when(jdbc.queryForObject(anyString(),eq(Integer.class),eq(123L))).thenReturn(1);
         Map<String,Object> student=new HashMap<>();student.put("id",1L);

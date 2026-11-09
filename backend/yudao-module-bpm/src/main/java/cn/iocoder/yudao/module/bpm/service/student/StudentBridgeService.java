@@ -138,15 +138,35 @@ public class StudentBridgeService {
             return r;
         } catch(Exception e) {throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid creator profile");}
     }
+    // A profile revision describes values, not JSON key order or defaults introduced
+    // by a newer reader. Keep real field differences conflicting at the same revision.
+    private static com.fasterxml.jackson.databind.JsonNode canonicalCreatorProfile(com.fasterxml.jackson.databind.JsonNode profile) {
+        if (profile == null || !profile.isObject()) return com.fasterxml.jackson.databind.node.NullNode.getInstance();
+        var p = (com.fasterxml.jackson.databind.node.ObjectNode) profile.deepCopy();
+        p.remove(List.of("workflow_sync_state", "updated_at"));
+        String identity = p.path("identity_type").asText();
+        if (p.path("student_status").asText().isEmpty()) p.put("student_status", "student".equals(identity) ? "student" : "graduated");
+        if (p.path("creator_type").asText().isEmpty()) p.put("creator_type", Set.of("creator", "team", "freelancer").contains(identity) ? identity : "creator");
+        if (!p.hasNonNull("province")) p.put("province", "");
+        if ("graduated".equals(p.path("student_status").asText())) p.put("grade_major", "");
+        return p;
+    }
+
+    private boolean sameCreatorProfile(Object stored, com.fasterxml.jackson.databind.JsonNode incoming) {
+        if (!(stored instanceof String json)) return false;
+        try { return canonicalCreatorProfile(mapper.readTree(json)).equals(incoming); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { return false; }
+    }
+
     @Transactional(rollbackFor=Exception.class)
     public Map<String,Object> syncCreator(CreatorRequest r) {
         if (deptId<=0) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Student department not configured");
         var p=r.profile();Long userId=ensureIdentity(new Request(r.externalUserId(),"1",p.path("real_name").asText(),p.path("phone").asText(),p.path("school").asText(),"profile"));
         var row=jdbc.queryForMap("SELECT * FROM bpm_external_student WHERE source=? AND external_user_id=? FOR UPDATE",SOURCE,r.externalUserId());
         long current=((Number)row.getOrDefault("creator_revision",0L)).longValue();
-        var canonical=p.deepCopy();if(canonical.isObject()){((com.fasterxml.jackson.databind.node.ObjectNode)canonical).remove("workflow_sync_state");((com.fasterxml.jackson.databind.node.ObjectNode)canonical).remove("updated_at");}
+        var canonical=canonicalCreatorProfile(p);
         String json=canonical.toString();
-        if (r.revision()==current && !Objects.equals(row.get("creator_json"),json)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Profile revision conflict");
+        if (r.revision()==current && !sameCreatorProfile(row.get("creator_json"),canonical)) throw new ResponseStatusException(HttpStatus.CONFLICT,"Profile revision conflict");
         if (r.revision()>current) {
             jdbc.update("UPDATE bpm_external_student SET creator_revision=?,creator_json=?,name=?,phone=?,school=? WHERE id=?",r.revision(),json,p.path("real_name").asText(),p.path("phone").asText(),p.path("school").asText(),row.get("id"));
             String nickname=p.path("real_name").asText();nickname=nickname.substring(0,nickname.offsetByCodePoints(0,Math.min(30,nickname.codePointCount(0,nickname.length()))));

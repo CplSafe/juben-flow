@@ -200,6 +200,12 @@ const refresh = () => {
   commentListRef.value?.getList();
 };
 
+/** 更新缓存中的详情，返回列表后也不会保留旧的办理按钮。 */
+function handleTaskCompleted() {
+  refresh();
+  return router.push('/bpm/task/todo');
+}
+
 const [PrintModal, printModalApi] = useVbenModal({
   connectedComponent: ProcessPrint,
   destroyOnClose: true,
@@ -394,7 +400,7 @@ onMounted(async () => {
             :normal-form-api="fApi"
             :writable-fields="writableFields"
             @success="refresh"
-            @completed="router.push('/bpm/task/todo')"
+            @completed="handleTaskCompleted"
           />
         </div>
       </template>

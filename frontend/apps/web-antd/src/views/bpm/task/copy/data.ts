@@ -2,6 +2,7 @@ import type { VbenFormSchema } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 
 import { getRangePickerDefaultProps } from '#/utils';
+import { projectSummaryColumns } from '#/utils/project-summary';
 
 /** 列表的搜索表单 */
 export function useGridFormSchema(): VbenFormSchema[] {
@@ -35,18 +36,7 @@ export function useGridColumns(): VxeTableGridOptions['columns'] {
       title: '流程名称',
       minWidth: 200,
     },
-    {
-      field: 'summary',
-      title: '摘要',
-      minWidth: 200,
-      formatter: ({ cellValue }) => {
-        return cellValue && cellValue.length > 0
-          ? cellValue
-              .map((item: any) => `${item.key} : ${item.value}`)
-              .join('\n')
-          : '-';
-      },
-    },
+    ...projectSummaryColumns(false),
     {
       field: 'startUser.nickname',
       title: '流程发起人',

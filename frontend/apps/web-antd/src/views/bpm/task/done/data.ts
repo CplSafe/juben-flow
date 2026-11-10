@@ -7,6 +7,7 @@ import { getDictOptions } from '@vben/hooks';
 import { getCategorySimpleList } from '#/api/bpm/category';
 import { getSimpleProcessDefinitionList } from '#/api/bpm/definition';
 import { getRangePickerDefaultProps } from '#/utils';
+import { projectSummaryColumns } from '#/utils/project-summary';
 
 /** 列表的搜索表单 */
 export function useGridFormSchema(): VbenFormSchema[] {
@@ -74,18 +75,7 @@ export function useGridColumns(): VxeTableGridOptions['columns'] {
       title: '流程',
       minWidth: 200,
     },
-    {
-      field: 'processInstance.summary',
-      title: '摘要',
-      minWidth: 200,
-      formatter: ({ cellValue }) => {
-        return cellValue && cellValue.length > 0
-          ? cellValue
-              .map((item: any) => `${item.key} : ${item.value}`)
-              .join('\n')
-          : '-';
-      },
-    },
+    ...projectSummaryColumns(true),
     {
       field: 'processInstance.startUser.nickname',
       title: '发起人',

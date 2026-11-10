@@ -138,19 +138,6 @@ useRefreshOnActivated(() => gridApi.query());
     </template>
 
     <Grid table-title="流程状态">
-      <template #slot-summary="{ row }">
-        <div
-          class="flex flex-col py-2"
-          v-if="row.summary && row.summary.length > 0"
-        >
-          <div v-for="(item, index) in row.summary" :key="index">
-            <span class="text-gray-500">
-              {{ item.key }} : {{ item.value }}
-            </span>
-          </div>
-        </div>
-        <div v-else>-</div>
-      </template>
       <template #slot-status="{ row }">
         <template
           v-if="

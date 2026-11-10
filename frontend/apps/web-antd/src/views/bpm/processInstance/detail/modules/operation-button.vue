@@ -73,7 +73,7 @@ const props = defineProps<{
   userOptions: SystemUserApi.User[];
   writableFields: string[]; // 流程表单可以编辑的字段
 }>(); // 当前登录的编号
-const emit = defineEmits(['success']);
+const emit = defineEmits(['success', 'completed']);
 
 const [SignatureModal, signatureModalApi] = useVbenModal({
   connectedComponent: Signature,
@@ -486,8 +486,8 @@ async function handleAudit(pass: boolean, formRef: FormInstance | undefined) {
     }
     // 重置表单
     formRef.resetFields();
-    // 加载最新数据
-    reload();
+    // 办理成功后返回待办列表
+    emit('completed');
   } finally {
     formLoading.value = false;
   }
@@ -558,8 +558,8 @@ async function handleTransfer() {
     transferFormRef.value.resetFields();
     popOverVisible.value.transfer = false;
     message.success($t('ui.actionMessage.operationSuccess'));
-    // 2. 加载最新数据
-    reload();
+    // 办理成功后返回待办列表
+    emit('completed');
   } finally {
     formLoading.value = false;
   }
@@ -582,8 +582,8 @@ async function handleDelegate() {
     popOverVisible.value.delegate = false;
     delegateFormRef.value.resetFields();
     message.success($t('ui.actionMessage.operationSuccess'));
-    // 2. 加载最新数据
-    reload();
+    // 办理成功后返回待办列表
+    emit('completed');
   } finally {
     formLoading.value = false;
   }
@@ -631,8 +631,8 @@ async function handleReturn() {
     popOverVisible.value.return = false;
     returnFormRef.value.resetFields();
     message.success($t('ui.actionMessage.operationSuccess'));
-    // 2 重新加载数据
-    reload();
+    // 办理成功后返回待办列表
+    emit('completed');
   } finally {
     formLoading.value = false;
   }

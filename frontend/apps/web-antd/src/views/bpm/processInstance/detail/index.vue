@@ -3,6 +3,7 @@ import type { BpmProcessInstanceApi } from '#/api/bpm/processInstance';
 import type { SystemUserApi } from '#/api/system/user';
 
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { Page, useVbenModal } from '@vben/common-ui';
 import {
@@ -48,6 +49,8 @@ const props = defineProps<{
   id: string; // 流程实例的编号
   taskId?: string; // 任务编号
 }>();
+
+const router = useRouter();
 
 const processInstanceLoading = ref(false); // 流程实例的加载中
 const processInstance = ref<BpmProcessInstanceApi.ProcessInstance>(); // 流程实例
@@ -391,6 +394,7 @@ onMounted(async () => {
             :normal-form-api="fApi"
             :writable-fields="writableFields"
             @success="refresh"
+            @completed="router.push('/bpm/task/todo')"
           />
         </div>
       </template>
